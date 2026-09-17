@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const readline = require('readline');
 const { createClient } = require('@supabase/supabase-js');
 
-// [!] 여기에 본인의 Supabase URL과 키를 입력하세요
+// 본인의 Supabase URL과 키
 const SUPABASE_URL = 'https://rczxhjndnrsjzihmzbqr.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_hBQ1_MFYQaDBt5jPFWONcg_NXN2NqOV';
 
@@ -22,22 +22,22 @@ function hashPassword(pw) {
   return crypto.createHash('sha256').update(pw).digest('hex');
 }
 
-// --- Supabase DB 헬퍼 함수 (소문자 컬럼명 대응) ---
+// --- Supabase DB 헬퍼 함수 ---
 async function getUserByUsername(username) {
   const { data, error } = await supabase
     .from('users')
     .select('*')
     .eq('username', username)
-    .single();
+    .maybeSingle(); // single() 대신 maybeSingle을 써서 데이터가 없을 때 에러 방지
+
   if (error) {
-    console.log('[DB 조회 에러]', error.message);
+    console.error('[DB 조회 에러]', error.message);
     return null;
   }
   return data;
 }
 
 async function saveUser(userObj) {
-  // DB 컬럼명 규칙에 맞게 매핑
   const payload = {
     username: userObj.username,
     passwordhash: userObj.passwordHash || userObj.passwordhash,
@@ -55,6 +55,8 @@ async function saveUser(userObj) {
     
   if (error) {
     console.error('[Supabase 저장 오류 🚨]', error.message);
+  } else {
+    console.log(`[DB 저장 성공] 유저: ${payload.username}`);
   }
 }
 
@@ -99,7 +101,7 @@ setInterval(() => {
   io.emit('stocks:update', STOCKS);
 }, 5000);
 
-// 배고픔 주기적 감소 (Supabase 전체 유저 대상)
+// 배고픔 주기적 감소
 setInterval(async () => {
   const { data: users, error } = await supabase.from('users').select('*');
   if (error || !users) return;
@@ -139,7 +141,18 @@ io.on('connection', (socket) => {
   async function syncUser() {
     if (!currentUser) return;
     const user = await getUserByUsername(currentUser);
-    if (user) socket.emit('player:sync', user);
+    if (user) {
+      // 프론트엔드 호환을 위해 키 매핑
+      socket.emit('player:sync', {
+        username: user.username,
+        money: user.money,
+        jobIndex: user.jobindex,
+        hunger: user.hunger,
+        isAdmin: user.isadmin,
+        stocks: user.stocks,
+        quests: user.quests
+      });
+    }
   }
 
   socket.on('auth:register', async ({ username, password }) => {
@@ -165,17 +178,28 @@ io.on('connection', (socket) => {
 
   socket.on('auth:login', async ({ username, password }) => {
     const user = await getUserByUsername(username);
-    if (!user || user.passwordHash !== hashPassword(password)) {
+    if (!user || user.passwordhash !== hashPassword(password)) {
       return socket.emit('notify', { success: false, msg: '아이디/비밀번호 오류' });
     }
     currentUser = username;
-    socket.emit('auth:success', { username, userData: user, stocks: STOCKS, jobs: JOBS, vending: VENDING_ITEMS, questList: QUEST_LIST });
+    
+    const clientUserData = {
+      username: user.username,
+      money: user.money,
+      jobIndex: user.jobindex,
+      hunger: user.hunger,
+      isAdmin: user.isadmin,
+      stocks: user.stocks || {},
+      quests: user.quests || {}
+    };
+
+    socket.emit('auth:success', { username, userData: clientUserData, stocks: STOCKS, jobs: JOBS, vending: VENDING_ITEMS, questList: QUEST_LIST });
   });
 
   socket.on('action:work', async () => {
     if (!currentUser) return;
     const user = await getUserByUsername(currentUser);
-    const job = JOBS[user.jobIndex];
+    const job = JOBS[user.jobindex];
     if (user.hunger < job.workEnergyCost) return socket.emit('notify', { success: false, msg: '배가 고파서 일할 수 없습니다!' });
 
     user.hunger = Math.max(0, user.hunger - job.workEnergyCost);
@@ -188,11 +212,11 @@ io.on('connection', (socket) => {
   socket.on('action:promote', async () => {
     if (!currentUser) return;
     const user = await getUserByUsername(currentUser);
-    const nextJob = JOBS[user.jobIndex + 1];
+    const nextJob = JOBS[user.jobindex + 1];
     if (!nextJob) return socket.emit('notify', { success: false, msg: '이미 최고 직급입니다.' });
     if (user.money < nextJob.reqMoney) return socket.emit('notify', { success: false, msg: '승진 조건(자산) 부족' });
 
-    user.jobIndex++;
+    user.jobindex++;
     await saveUser(user);
     await syncUser();
     socket.emit('notify', { success: true, msg: `[${nextJob.name}] (으)로 승진했습니다!` });
@@ -257,7 +281,6 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `[퀘스트 완료] +₩${quest.rewardMoney.toLocaleString()}` });
   });
 
-  // 카지노 종합 로직
   socket.on('casino:action', async ({ game, action, payload }) => {
     if (!currentUser) return;
     const user = await getUserByUsername(currentUser);
@@ -358,7 +381,7 @@ io.on('connection', (socket) => {
   socket.on('admin:action', async ({ targetUser, action, value }) => {
     if (!currentUser) return;
     const adminUser = await getUserByUsername(currentUser);
-    if (!adminUser || !adminUser.isAdmin) return;
+    if (!adminUser || !adminUser.isadmin) return;
     const target = await getUserByUsername(targetUser);
     if (!target) return;
 
@@ -376,7 +399,7 @@ readline.createInterface({ input: process.stdin, output: process.stdout }).on('l
     const targetId = line.trim().replace('/admin add ', '').trim();
     const target = await getUserByUsername(targetId);
     if (target) {
-      target.isAdmin = true;
+      target.isadmin = true;
       await saveUser(target);
       io.emit('player:sync:all');
       console.log(`[ADMIN] ${targetId} 관리자 권한 부여 완료.`);
