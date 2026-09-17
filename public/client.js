@@ -1,12 +1,17 @@
 const socket = io();
-let myData = null, stocksCache = [], jobListCache = [], questListCache = [];
+let myData = null, otherPlayers = {}, jobsCache = [], vendingCache = [];
+let myPos = { x: 400, y: 250 };
+const keys = {};
+
+window.addEventListener('keydown', e => keys[e.key] = true);
+window.addEventListener('keyup', e => keys[e.key] = false);
 
 function showToast(msg, isSuccess = true) {
   const toast = document.createElement('div');
-  toast.className = `toast ${isSuccess ? 'success' : 'error'}`;
+  toast.className = `toast ${isSuccess ? '' : 'error'}`;
   toast.textContent = msg;
   document.getElementById('toast-box').appendChild(toast);
-  setTimeout(() => toast.remove(), 3500);
+  setTimeout(() => toast.remove(), 3000);
 }
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -19,97 +24,85 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 document.getElementById('btn-register').onclick = () => socket.emit('auth:register', { username: document.getElementById('auth-username').value, password: document.getElementById('auth-password').value });
 document.getElementById('btn-login').onclick = () => socket.emit('auth:login', { username: document.getElementById('auth-username').value, password: document.getElementById('auth-password').value });
 
-socket.on('notify', data => showToast(data.msg, data.success));
-socket.on('auth:success', ({ userData, stocks, jobs, vending, questList }) => {
-  document.getElementById('auth-modal').classList.add('hidden'); document.getElementById('game-app').classList.remove('hidden');
-  myData = userData; stocksCache = stocks; jobListCache = jobs; questListCache = questList;
-  renderAll(vending);
+socket.on('notify', d => showToast(d.msg, d.success));
+socket.on('auth:success', ({ username, userData, stocks, jobs, vending }) => {
+  document.getElementById('auth-modal').classList.add('hidden');
+  document.getElementById('game-app').classList.remove('hidden');
+  myData = userData; jobsCache = jobs; vendingCache = vending;
+  renderAll();
+  startCanvasLoop();
 });
 
 socket.on('player:sync', data => { myData = data; renderAll(); });
-socket.on('player:sync:all', () => { if(myData) socket.emit('auth:login', { username: myData.username, password: '' }); });
-socket.on('hunger:tick', () => { if(myData && myData.hunger>0) { myData.hunger -= 2; renderHUD(); } });
-socket.on('stocks:update', stocks => { stocksCache = stocks; renderStocks(); });
+socket.on('players:update', players => { otherPlayers = players; });
 
-function renderAll(vendingItems = null) { renderHUD(); renderJobs(); renderQuests(); renderStocks(); if(vendingItems) renderVending(vendingItems); }
-
-function renderHUD() {
+function renderAll() {
+  const maxH = myData.maxHunger || 100;
   document.getElementById('hud-username').textContent = myData.username;
   document.getElementById('hud-money').textContent = `₩${myData.money.toLocaleString()}`;
-  document.getElementById('hud-job').textContent = jobListCache[myData.jobIndex]?.name || '무직';
-  document.getElementById('hud-hunger-bar').style.width = `${myData.hunger}%`;
-  document.getElementById('hud-hunger-val').textContent = `${myData.hunger} / 100`;
-  const adminTag = document.getElementById('hud-admin-tag');
-  if(myData.isAdmin) { adminTag.textContent = '👑 ADMIN'; adminTag.className = 'user-badge admin'; document.getElementById('tab-btn-admin').classList.remove('hidden'); }
-}
+  document.getElementById('hud-job').textContent = jobsCache[myData.jobIndex]?.name || '무직';
+  document.getElementById('hud-hunger-bar').style.width = `${(myData.hunger / maxH) * 100}%`;
+  document.getElementById('hud-hunger-val').textContent = `${myData.hunger} / ${maxH}`;
 
-function renderJobs() {
-  document.getElementById('job-career-path').innerHTML = jobListCache.map((job, idx) => `
-    <div class="card-item" style="${myData.jobIndex===idx ? 'border-color:var(--primary)' : ''}">
-      <h4>${job.name} ${myData.jobIndex===idx ? '(현재)' : ''}</h4>
-      <p>월급: ₩${job.salary.toLocaleString()} | 에너지: -${job.workEnergyCost} | 승진조건: ₩${job.reqMoney.toLocaleString()}</p>
+  if(myData.isAdmin) document.getElementById('tab-btn-admin').classList.remove('hidden');
+
+  document.getElementById('job-list').innerHTML = jobsCache.map((j, idx) => `
+    <div class="card-item" style="${myData.jobIndex === idx ? 'border-color:var(--primary); background:#1e293b;' : ''}">
+      <div>
+        <h4>${j.name} ${myData.jobIndex === idx ? '(현재)' : ''}</h4>
+        <p class="desc-text">월급: ₩${j.salary.toLocaleString()} / 30초 | 에너지: -${j.workEnergyCost}</p>
+      </div>
+      <div style="font-size:12px; text-align:right;">승진조건<br><strong>₩${j.reqMoney.toLocaleString()}</strong></div>
     </div>`).join('');
+
+  const inv = myData.inventory || {};
+  document.getElementById('inventory-list').innerHTML = Object.keys(inv).length === 0 ? '<p style="color:gray;">가방이 비었습니다.</p>' :
+    Object.keys(inv).map(id => `<div class="card-item"><span>${id} (${inv[id]}개)</span><button class="btn success" style="width:auto;padding:5px 10px;" onclick="socket.emit('inventory:use','${id}')">사용/판매</button></div>`).join('');
+
+  document.getElementById('vending-list').innerHTML = vendingCache.map(i => `
+    <div class="card-item"><span>${i.name} (₩${i.cost.toLocaleString()})</span><button class="btn primary" style="width:auto;padding:5px 10px;" onclick="socket.emit('vending:buy','${i.id}')">구매</button></div>`).join('');
+
+  const up = myData.upgrades || { fishingRod: 1, stomach: 1 };
+  document.getElementById('rod-info').textContent = `현재 Lv.${up.fishingRod} (비용: ₩${(up.fishingRod * 150000).toLocaleString()})`;
+  document.getElementById('stomach-info').textContent = `현재 Lv.${up.stomach} (최대 포만감: ${maxH}, 비용: ₩${(up.stomach * 250000).toLocaleString()})`;
 }
 
-function renderVending(items) {
-  document.getElementById('vending-item-list').innerHTML = items.map(item => `
-    <div class="card-item"><h4>${item.name} (+${item.restoreHunger}포만감)</h4><button class="btn primary" onclick="socket.emit('vending:buy','${item.id}')">₩${item.cost.toLocaleString()} 구매</button></div>`).join('');
-}
+function startCanvasLoop() {
+  const canvas = document.getElementById('world-canvas');
+  const ctx = canvas.getContext('2d');
 
-function renderQuests() {
-  const now = Date.now();
-  document.getElementById('quest-item-list').innerHTML = questListCache.map(q => {
-    const cd = Math.ceil((((myData.quests&&myData.quests[q.id])||0) + q.cooldownSec*1000 - now)/1000);
-    return `<div class="card-item"><h4>${q.title}</h4><p>보상: ₩${q.rewardMoney.toLocaleString()} | 에너지: -${q.hungerCost}</p><button class="btn ${cd>0?'secondary':'primary'}" ${cd>0?'disabled':''} onclick="socket.emit('quest:start','${q.id}')">${cd>0?`대기(${cd}초)`:'수행'}</button></div>`;
-  }).join('');
-}
+  setInterval(() => {
+    let moved = false;
+    if (keys['ArrowUp'] || keys['w']) { myPos.y -= 3; moved = true; }
+    if (keys['ArrowDown'] || keys['s']) { myPos.y += 3; moved = true; }
+    if (keys['ArrowLeft'] || keys['a']) { myPos.x -= 3; moved = true; }
+    if (keys['ArrowRight'] || keys['d']) { myPos.x += 3; moved = true; }
 
-function renderStocks() {
-  document.getElementById('stock-market-list').innerHTML = stocksCache.map(s => `
-    <div class="card-item"><h4>${s.name} (${s.symbol})</h4><div class="text-green">₩${s.price.toLocaleString()}</div><p>보유: ${(myData.stocks&&myData.stocks[s.symbol])||0}주</p><div style="display:flex;gap:5px;"><button class="btn primary" onclick="if(confirm('1주 매수?')) socket.emit('stock:buy',{symbol:'${s.symbol}',amount:1})">매수</button><button class="btn secondary" onclick="if(confirm('1주 매도?')) socket.emit('stock:sell',{symbol:'${s.symbol}',amount:1})">매도</button></div></div>`).join('');
-}
+    if (moved) socket.emit('player:move', myPos);
 
-document.getElementById('btn-do-work').onclick = () => socket.emit('action:work');
-document.getElementById('btn-promote').onclick = () => socket.emit('action:promote');
-document.getElementById('btn-admin-give-money').onclick = () => socket.emit('admin:action', { targetUser: document.getElementById('admin-target-user').value, action: 'give_money', value: 100000000 });
-document.getElementById('btn-admin-feed').onclick = () => socket.emit('admin:action', { targetUser: document.getElementById('admin-target-user').value, action: 'full_hunger' });
+    ctx.fillStyle = '#111827';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-window.playCasino = (game, action, extra = null) => {
-  let payload = {};
-  if (game === 'dice') payload = { bet: document.getElementById('dice-bet').value, target: document.getElementById('dice-target').value };
-  if (game === 'baccarat') payload = { bet: document.getElementById('bac-bet').value, betOn: extra };
-  if (game === 'roulette') payload = { bet: document.getElementById('roulette-bet').value, betType: extra };
-  if (game === 'mines' && action === 'start') payload = { bet: document.getElementById('mines-bet').value, minesCount: document.getElementById('mines-count').value };
-  if (game === 'mines' && action === 'click') payload = { index: extra };
-  if (game === 'blackjack' && action === 'start') payload = { bet: document.getElementById('bj-bet').value };
-  socket.emit('casino:action', { game, action, payload });
-};
+    ctx.fillStyle = '#1f2937';
+    ctx.fillRect(50, 50, 120, 80); ctx.fillStyle = '#fff'; ctx.fillText('🏪 편의점', 75, 95);
+    ctx.fillRect(630, 50, 120, 80); ctx.fillStyle = '#fff'; ctx.fillText('🎣 힐링 낚시터', 645, 95);
 
-socket.on('casino:state', res => {
-  if (res.game === 'blackjack') {
-    document.getElementById('btn-bj-start').classList.add('hidden'); document.getElementById('btn-bj-hit').classList.remove('hidden'); document.getElementById('btn-bj-stand').classList.remove('hidden'); document.getElementById('bj-table').classList.remove('hidden');
-    document.getElementById('p-cards').textContent = '내 패: ' + res.pHand.map(c => c.suit+c.val).join(','); document.getElementById('d-cards').textContent = '딜러: ' + res.dHand.map(c => c.suit+c.val).join(',');
-  }
-  if (res.game === 'mines') {
-    const grid = document.getElementById('mines-grid'); grid.classList.remove('hidden');
-    document.getElementById('btn-mines-start').classList.add('hidden'); document.getElementById('btn-mines-cashout').classList.remove('hidden');
-    if (res.state === 'playing' && res.clicked === undefined) {
-      grid.innerHTML = Array(25).fill().map((_,i) => `<button class="mine-btn" onclick="playCasino('mines','click',${i})"></button>`).join('');
-    } else if (res.clicked !== undefined) {
-      grid.children[res.clicked].classList.add('safe'); grid.children[res.clicked].textContent = '💎'; grid.children[res.clicked].disabled = true; document.getElementById('mines-multi').textContent = `(x${res.multi})`;
+    for (let id in otherPlayers) {
+      let p = otherPlayers[id];
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(p.x, p.y, 12, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '11px sans-serif'; ctx.fillText(p.username, p.x - 15, p.y - 18);
     }
-  }
-});
 
-socket.on('casino:result', res => {
-  document.getElementById('casino-log').textContent = res.msg; showToast(res.msg, res.win);
-  if (res.game === 'blackjack') {
-    document.getElementById('p-cards').textContent = '내 패: ' + res.pHand.map(c => c.suit+c.val).join(','); document.getElementById('d-cards').textContent = '딜러: ' + res.dHand.map(c => c.suit+c.val).join(',');
-    setTimeout(() => { document.getElementById('btn-bj-start').classList.remove('hidden'); document.getElementById('btn-bj-hit').classList.add('hidden'); document.getElementById('btn-bj-stand').classList.add('hidden'); }, 2000);
-  }
-  if (res.game === 'mines') {
-    const grid = document.getElementById('mines-grid');
-    res.grid.forEach((t, i) => { grid.children[i].disabled = true; if(t==='mine'){ grid.children[i].classList.add('boom'); grid.children[i].textContent='💣'; }else{ grid.children[i].textContent='💎'; } });
-    setTimeout(() => { document.getElementById('btn-mines-start').classList.remove('hidden'); document.getElementById('btn-mines-cashout').classList.add('hidden'); grid.classList.add('hidden'); document.getElementById('mines-multi').textContent = ''; }, 2000);
-  }
-});
+    ctx.fillStyle = '#3b82f6';
+    ctx.beginPath(); ctx.arc(myPos.x, myPos.y, 14, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.fillText(myData.username + ' (나)', myPos.x - 20, myPos.y - 20);
+
+  }, 1000 / 60);
+}
+
+window.execAdmin = (command, value) => {
+  const targetUser = document.getElementById('admin-target').value.trim();
+  if(!targetUser || !value) return alert('대상 유저와 값을 입력하세요.');
+  socket.emit('admin:execute', { targetUser, command, value });
+};
