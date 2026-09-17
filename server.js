@@ -187,7 +187,7 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `🎣 [Lv.${rodLevel} 낚싯대] ${caught.name} 낚시 성공!` });
   });
 
-  socket.on('upgrade:buy', async (type) => {
+socket.on('upgrade:buy', async (type) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
     if (!u.upgrades) u.upgrades = { fishingRod: 1, stomach: 1 };
@@ -204,14 +204,19 @@ io.on('connection', (socket) => {
     } 
     else if (type === 'stomach') {
       const curLv = u.upgrades.stomach;
-      const cost = curLv * 250000;
+      
+      // [포만감 레벨업할 때마다 비용이 점점 더 비싸지도록 설계]
+      // 예: 1렙->2렙은 20만원, 레벨이 오를수록 비용이 가파르게 상승 (최대 1000까지)
+      const cost = Math.round(200000 * Math.pow(1.3, curLv - 1));
+
       if (curLv >= 19) return socket.emit('notify', { success: false, msg: '위장이 이미 최고 레벨(최대 포만감 1000)입니다!' });
       if (u.money < cost) return socket.emit('notify', { success: false, msg: `비용 부족 (필요: ₩${cost.toLocaleString()})` });
 
       u.money -= cost;
       u.upgrades.stomach++;
       u.maxhunger = Math.min(1000, 100 + (u.upgrades.stomach - 1) * 50);
-      socket.emit('notify', { success: true, msg: `🍖 위장 업그레이드! 최대 포만감: ${u.maxhunger} / 1000` });
+      
+      socket.emit('notify', { success: true, msg: `🍖 위장 업그레이드 성공! (최대 포만감: ${u.maxhunger} / 1000)` });
     }
     await saveUser(u);
     await syncUser();
