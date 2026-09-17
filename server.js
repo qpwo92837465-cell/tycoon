@@ -119,34 +119,78 @@ io.on('connection', (socket) => {
   }
 
   socket.on('auth:register', async ({ username, password }) => {
-    if (!username || username.trim().length < 2) return socket.emit('notify', { success: false, msg: '아이디는 2자 이상 입력해주세요.' });
-    if (await getUserByUsername(username)) return socket.emit('notify', { success: false, msg: '이미 존재하는 아이디입니다.' });
-    await saveUser({ username, passwordHash: hashPassword(password), money: 200000, jobIndex: 0, hunger: 100, maxHunger: 100, isAdmin: false, inventory: {}, upgrades: { fishingRod: 1, stomach: 1 } });
-    socket.emit('notify', { success: true, msg: '가입 완료! 로그인하세요.' });
+    if (!username || username.trim().length < 2) {
+      return socket.emit('notify', { success: false, msg: '아이디는 2자 이상 입력해주세요.' });
+    }
+    if (!password || password.trim().length < 2) {
+      return socket.emit('notify', { success: false, msg: '비밀번호를 입력해주세요.' });
+    }
+
+    // 이미 존재하는지 확인
+    const existing = await getUserByUsername(username.trim());
+    if (existing) {
+      return socket.emit('notify', { success: false, msg: '이미 존재하는 아이디입니다.' });
+    }
+
+    const newUserData = {
+      username: username.trim(),
+      passwordHash: hashPassword(password),
+      money: 20000,
+      jobIndex: 0,
+      hunger: 100,
+      maxHunger: 100,
+      isAdmin: false,
+      inventory: {},
+      upgrades: { fishingRod: 1, stomach: 1 }
+    };
+
+    // DB에 저장 시도
+    await saveUser(newUserData);
+
+    // 저장 직후 바로 확인
+    const verifyUser = await getUserByUsername(username.trim());
+    if (!verifyUser) {
+      return socket.emit('notify', { success: false, msg: '회원가입 데이터 저장 실패 (DB 오류)' });
+    }
+
+    socket.emit('notify', { success: true, msg: '회원가입 완료! 이제 로그인하세요.' });
   });
 
   socket.on('auth:login', async ({ username, password }) => {
-    const u = await getUserByUsername(username);
-    if (!u || u.passwordhash !== hashPassword(password)) return socket.emit('notify', { success: false, msg: '로그인 실패' });
-    currentUser = username;
-    onlinePlayers[socket.id] = { username, x: 400, y: 300 };
+    if (!username || !password) {
+      return socket.emit('notify', { success: false, msg: '아이디와 비밀번호를 입력해주세요.' });
+    }
+
+    const u = await getUserByUsername(username.trim());
+    if (!u) {
+      return socket.emit('notify', { success: false, msg: '존재하지 않는 아이디입니다.' });
+    }
+
+    // 소문자 column 대응 (passwordhash 또는 passwordHash)
+    const storedHash = u.passwordhash || u.passwordHash;
+    if (storedHash !== hashPassword(password)) {
+      return socket.emit('notify', { success: false, msg: '비밀번호가 일치하지 않습니다.' });
+    }
+
+    currentUser = u.username;
+    onlinePlayers[socket.id] = { username: u.username, x: 400, y: 300 };
 
     socket.emit('auth:success', {
-      username,
+      username: u.username,
       userData: { 
-        username: u.username, money: u.money, jobIndex: u.jobindex, 
-        hunger: u.hunger, maxHunger: u.maxhunger || 100, isAdmin: u.isadmin, 
-        inventory: u.inventory || {}, upgrades: u.upgrades || { fishingRod: 1, stomach: 1 }
+        username: u.username, 
+        money: u.money, 
+        jobIndex: u.jobindex !== undefined ? u.jobindex : u.jobIndex, 
+        hunger: u.hunger, 
+        maxHunger: u.maxhunger || u.maxHunger || 100, 
+        isAdmin: u.isadmin !== undefined ? u.isadmin : u.isAdmin, 
+        inventory: u.inventory || {}, 
+        upgrades: u.upgrades || { fishingRod: 1, stomach: 1 }
       },
-      stocks: STOCKS, jobs: JOBS, vending: VENDING_ITEMS
+      stocks: STOCKS, 
+      jobs: JOBS, 
+      vending: VENDING_ITEMS
     });
-  });
-
-  socket.on('player:move', (pos) => {
-    if (!currentUser || !onlinePlayers[socket.id]) return;
-    onlinePlayers[socket.id].x = pos.x;
-    onlinePlayers[socket.id].y = pos.y;
-    socket.broadcast.emit('players:update', onlinePlayers);
   });
 
   socket.on('action:promote', async () => {
