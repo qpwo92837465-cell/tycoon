@@ -2,14 +2,14 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>City Life - 멀티플레이어 경제 타이쿤</title>
+  <title>City Life - Metaverse Tycoon</title>
   <link rel="stylesheet" href="style.css">
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
   <div id="auth-modal" class="modal-backdrop">
     <div class="modal-box">
-      <h2 class="title-logo">🏙️ CITY LIFE</h2>
+      <h2 class="title-logo">🏙️ METAVERSE CITY</h2>
       <div class="input-group"><input type="text" id="auth-username" placeholder="아이디"></div>
       <div class="input-group"><input type="password" id="auth-password" placeholder="비밀번호"></div>
       <div class="auth-buttons">
@@ -21,10 +21,7 @@
 
   <div id="game-app" class="hidden">
     <header class="hud-header">
-      <div class="user-info">
-        <span class="user-badge" id="hud-admin-tag">USER</span>
-        <strong id="hud-username">게스트</strong>
-      </div>
+      <div class="user-info"><strong id="hud-username">게스트</strong></div>
       <div class="stats-container">
         <div class="stat-card">자산 <span class="stat-value text-green" id="hud-money">₩0</span></div>
         <div class="stat-card">직업 <span class="stat-value" id="hud-job">무직</span></div>
@@ -35,52 +32,65 @@
       </div>
     </header>
 
-    <nav class="tab-nav">
-      <button class="tab-btn active" data-tab="tab-job">💼 직업</button>
-      <button class="tab-btn" data-tab="tab-vending">🏪 자판기</button>
-      <button class="tab-btn" data-tab="tab-quest">📜 퀘스트</button>
-      <button class="tab-btn" data-tab="tab-stock">📈 주식</button>
-      <button class="tab-btn" data-tab="tab-casino">🎰 VIP 카지노</button>
-      <button class="tab-btn hidden" id="tab-btn-admin" data-tab="tab-admin">👑 관리자</button>
-    </nav>
+    <div class="game-layout">
+      <div class="canvas-container">
+        <canvas id="world-canvas" width="800" height="500"></canvas>
+        <div class="controls-guide">🕹️ 이동: 방향키/WASD | 편의점, 낚시터, 카지노 구역으로 이동하세요!</div>
+      </div>
 
-    <main class="content-container">
-      <section id="tab-job" class="tab-panel active">
-        <div class="panel-card">
-          <h3>💼 근로 및 커리어</h3>
-          <button id="btn-do-work" class="btn huge primary">🔨 열심히 일하기</button>
-          <button id="btn-promote" class="btn huge secondary">⬆️ 승진 신청</button>
-          <div id="job-career-path" class="career-list"></div>
-        </div>
-      </section>
+      <div class="side-panel">
+        <nav class="tab-nav">
+          <button class="tab-btn active" data-tab="tab-job">💼 직업</button>
+          <button class="tab-btn" data-tab="tab-inventory">🎒 가방</button>
+          <button class="tab-btn" data-tab="tab-vending">🏪 편의점</button>
+          <button class="tab-btn" data-tab="tab-upgrade">⚡ 업그레이드</button>
+          <button class="tab-btn" data-tab="tab-fishing">🎣 낚시터</button>
+          <button class="tab-btn hidden" id="tab-btn-admin" data-tab="tab-admin">👑 어드민</button>
+        </nav>
 
-      <section id="tab-vending" class="tab-panel"><div class="panel-card"><h3>🏪 24시 자판기</h3><div id="vending-item-list" class="grid-cards"></div></div></section>
-      <section id="tab-quest" class="tab-panel"><div class="panel-card"><h3>📜 퀘스트 센터</h3><div id="quest-item-list" class="grid-cards"></div></div></section>
-      <section id="tab-stock" class="tab-panel"><div class="panel-card"><h3>📈 주식 거래소</h3><div id="stock-market-list" class="grid-cards"></div></div></section>
-
-      <section id="tab-casino" class="tab-panel">
-        <div class="panel-card">
-          <h3>🎰 그랜드 VIP 카지노</h3>
-          <div class="casino-master-grid">
-            <div class="sub-card"><h4>🎲 다이스</h4><input type="number" id="dice-bet" value="5000"><input type="number" id="dice-target" value="49.5" max="99" min="1"><button class="btn primary" onclick="playCasino('dice', 'bet')">굴리기</button></div>
-            <div class="sub-card"><h4>🃏 바카라</h4><input type="number" id="bac-bet" value="10000"><div style="display:flex;gap:5px;margin-top:10px;"><button class="btn primary" onclick="playCasino('baccarat', 'bet', 'player')">플레이어</button><button class="btn success" onclick="playCasino('baccarat', 'bet', 'tie')">타이</button><button class="btn warning" onclick="playCasino('baccarat', 'bet', 'banker')">뱅커</button></div></div>
-            <div class="sub-card"><h4>🎡 룰렛</h4><input type="number" id="roulette-bet" value="10000"><div style="display:flex;gap:5px;margin-top:10px;"><button class="btn" style="background:#ef4444;" onclick="playCasino('roulette', 'bet', 'red')">RED</button><button class="btn" style="background:#10b981;" onclick="playCasino('roulette', 'bet', 'green')">GREEN</button><button class="btn" style="background:#1f2937;" onclick="playCasino('roulette', 'bet', 'black')">BLACK</button></div></div>
-            <div class="sub-card bj-card"><h4>♠️ 블랙잭</h4><input type="number" id="bj-bet" value="10000"><div id="bj-table" class="hidden"><div class="cards" id="d-cards">딜러: </div><div class="cards" id="p-cards">내 패: </div></div><div id="bj-controls"><button class="btn primary" id="btn-bj-start" onclick="playCasino('blackjack', 'start')">시작</button><button class="btn success hidden" id="btn-bj-hit" onclick="playCasino('blackjack', 'hit')">Hit</button><button class="btn warning hidden" id="btn-bj-stand" onclick="playCasino('blackjack', 'stand')">Stand</button></div></div>
-            <div class="sub-card mines-card"><h4>💣 마인</h4><input type="number" id="mines-bet" value="5000"><input type="number" id="mines-count" value="3" min="1" max="24"><div id="mines-grid" class="mines-grid hidden"></div><div><button class="btn primary" id="btn-mines-start" onclick="playCasino('mines', 'start')">시작</button><button class="btn success hidden" id="btn-mines-cashout" onclick="playCasino('mines', 'cashout')">캐시아웃 <span id="mines-multi"></span></button></div></div>
+        <div class="panel-content">
+          <div id="tab-job" class="tab-panel active">
+            <h3>💼 커리어 및 승진</h3>
+            <button class="btn huge primary" style="margin-bottom:15px;" onclick="socket.emit('action:promote')">⬆️ 다음 직급 승진 신청</button>
+            <div id="job-list" class="sub-list"></div>
           </div>
-          <div id="casino-log" class="log-box">결과 표시</div>
+          <div id="tab-inventory" class="tab-panel">
+            <h3>내 인벤토리</h3>
+            <div id="inventory-list" class="sub-list"></div>
+          </div>
+          <div id="tab-vending" class="tab-panel">
+            <h3>편의점 자판기</h3>
+            <div id="vending-list" class="sub-list"></div>
+          </div>
+          <div id="tab-upgrade" class="tab-panel">
+            <h3>⚡ 캐릭터 업그레이드</h3>
+            <div class="sub-list">
+              <div class="card-item">
+                <div><h4>🎣 낚싯대 강화</h4><p class="desc-text" id="rod-info">현재 Lv.1</p></div>
+                <button class="btn success" style="width:auto;padding:8px;" onclick="socket.emit('upgrade:buy','fishingRod')">강화하기</button>
+              </div>
+              <div class="card-item">
+                <div><h4>🍖 위장 강화 (최대 포만감 1000)</h4><p class="desc-text" id="stomach-info">현재 Lv.1</p></div>
+                <button class="btn success" style="width:auto;padding:8px;" onclick="socket.emit('upgrade:buy','stomach')">강화하기</button>
+              </div>
+            </div>
+          </div>
+          <div id="tab-fishing" class="tab-panel">
+            <h3>힐링 낚시터</h3>
+            <p class="desc-text">낚시를 통해 고급 어종을 건져올려 판매하세요!</p>
+            <button class="btn primary huge" onclick="socket.emit('fish:catch')">🎣 낚싯대 던지기</button>
+          </div>
+          <div id="tab-admin" class="tab-panel">
+            <h3>👑 관리자 패널</h3>
+            <div class="input-group"><input type="text" id="admin-target" placeholder="대상 유저 닉네임"></div>
+            <div style="display:flex; gap:5px; margin-bottom:5px;">
+              <button class="btn warning" onclick="execAdmin('money', prompt('지급 금액:'))">돈 지급</button>
+              <button class="btn success" onclick="execAdmin('hunger', '100')">포만감 완충</button>
+            </div>
+          </div>
         </div>
-      </section>
-
-      <section id="tab-admin" class="tab-panel">
-        <div class="panel-card admin-border">
-          <h3>👑 관리자 제어 패널</h3>
-          <input type="text" id="admin-target-user" placeholder="대상 유저 아이디">
-          <button id="btn-admin-give-money" class="btn warning">1억 지급</button>
-          <button id="btn-admin-feed" class="btn success">포만감 충전</button>
-        </div>
-      </section>
-    </main>
+      </div>
+    </div>
   </div>
   <div id="toast-box" class="toast-container"></div>
   <script src="client.js"></script>
