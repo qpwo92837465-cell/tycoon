@@ -22,22 +22,40 @@ function hashPassword(pw) {
   return crypto.createHash('sha256').update(pw).digest('hex');
 }
 
-// --- Supabase DB 헬퍼 함수 ---
+// --- Supabase DB 헬퍼 함수 (소문자 컬럼명 대응) ---
 async function getUserByUsername(username) {
   const { data, error } = await supabase
     .from('users')
     .select('*')
     .eq('username', username)
     .single();
-  if (error || !data) return null;
+  if (error) {
+    console.log('[DB 조회 에러]', error.message);
+    return null;
+  }
   return data;
 }
 
 async function saveUser(userObj) {
+  // DB 컬럼명 규칙에 맞게 매핑
+  const payload = {
+    username: userObj.username,
+    passwordhash: userObj.passwordHash || userObj.passwordhash,
+    money: userObj.money,
+    jobindex: userObj.jobIndex !== undefined ? userObj.jobIndex : userObj.jobindex,
+    hunger: userObj.hunger,
+    isadmin: userObj.isAdmin !== undefined ? userObj.isAdmin : userObj.isadmin,
+    stocks: userObj.stocks || {},
+    quests: userObj.quests || {}
+  };
+
   const { error } = await supabase
     .from('users')
-    .upsert([userObj], { onConflict: 'username' });
-  if (error) console.error('[Supabase 저장 오류]', error.message);
+    .upsert([payload], { onConflict: 'username' });
+    
+  if (error) {
+    console.error('[Supabase 저장 오류 🚨]', error.message);
+  }
 }
 
 // 게임 설정 데이터
