@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>City Life - 멀티플레이어 경제 타이쿤</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+  <!-- 인증 모달 (로그인 / 회원가입) -->
+  <div id="auth-modal" class="modal-backdrop">
+    <div class="modal-box">
+      <h2 class="title-logo">🏙️ CITY LIFE TYCOON</h2>
+      <p class="subtitle">나만의 도시 라이프를 개척하세요</p>
+      
+      <div class="input-group">
+        <label>아이디</label>
+        <input type="text" id="auth-username" placeholder="아이디 입력">
+      </div>
+      <div class="input-group">
+        <label>비밀번호</label>
+        <input type="password" id="auth-password" placeholder="비밀번호 입력">
+      </div>
+
+      <div class="auth-buttons">
+        <button id="btn-login" class="btn primary">로그인</button>
+        <button id="btn-register" class="btn secondary">회원가입</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 메인 게임 UI (로그인 후 노출) -->
+  <div id="game-app" class="hidden">
+    <!-- 상단 대시보드 HUD -->
+    <header class="hud-header">
+      <div class="user-info">
+        <span class="user-badge" id="hud-admin-tag">USER</span>
+        <strong id="hud-username">게스트</strong>
+      </div>
+      <div class="stats-container">
+        <div class="stat-card">
+          <span class="stat-label">보유 자산</span>
+          <span class="stat-value text-green" id="hud-money">₩0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">현재 직업</span>
+          <span class="stat-value" id="hud-job">무직</span>
+        </div>
+        <div class="stat-card hunger-card">
+          <span class="stat-label">포만감</span>
+          <div class="progress-bar">
+            <div id="hud-hunger-bar" class="progress-fill" style="width: 100%;"></div>
+          </div>
+          <span id="hud-hunger-val" class="sub-text">100 / 100</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- 탭 네비게이션 -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="tab-job">💼 직업 / 일하기</button>
+      <button class="tab-btn" data-tab="tab-vending">🏪 편의점 자판기</button>
+      <button class="tab-btn" data-tab="tab-quest">📜 주민 퀘스트</button>
+      <button class="tab-btn" data-tab="tab-stock">📈 증권 주식 시장</button>
+      <button class="tab-btn" data-tab="tab-casino">🎰 지하 카지노</button>
+      <button class="tab-btn hidden" id="tab-btn-admin" data-tab="tab-admin">👑 관리자 패널</button>
+    </nav>
+
+    <!-- 탭 컨텐츠 영역 -->
+    <main class="content-container">
+      
+      <!-- 1. 직업 탭 -->
+      <section id="tab-job" class="tab-panel active">
+        <div class="panel-card">
+          <h3>💼 근로 및 커리어 성장</h3>
+          <p class="desc-text">일을 하여 급여를 받고, 자산을 모아 더 높은 연봉의 직업으로 승진하세요.</p>
+          <div class="action-box">
+            <button id="btn-do-work" class="btn huge primary">🔨 열심히 일하기 (급여 즉시 수령)</button>
+            <button id="btn-promote" class="btn secondary">⬆️ 다음 직급으로 승진 신청</button>
+          </div>
+          <div id="job-career-path" class="career-list"></div>
+        </div>
+      </section>
+
+      <!-- 2. 자판기 탭 -->
+      <section id="tab-vending" class="tab-panel">
+        <div class="panel-card">
+          <h3>🏪 24시 자판기</h3>
+          <p class="desc-text">포만감이 떨어지면 일을 하거나 퀘스트를 수행할 수 없습니다. 신선한 음식을 사드세요!</p>
+          <div id="vending-item-list" class="grid-cards"></div>
+        </div>
+      </section>
+
+      <!-- 3. 퀘스트 탭 -->
+      <section id="tab-quest" class="tab-panel">
+        <div class="panel-card">
+          <h3>📜 마을 주민 퀘스트 센터</h3>
+          <p class="desc-text">도움이 필요한 마을 주민들의 의뢰를 완수하고 쏠쏠한 보상금을 챙기세요.</p>
+          <div id="quest-item-list" class="grid-cards"></div>
+        </div>
+      </section>
+
+      <!-- 4. 주식 탭 -->
+      <section id="tab-stock" class="tab-panel">
+        <div class="panel-card">
+          <h3>📈 실시간 가상 주식 거래소</h3>
+          <p class="desc-text">5초마다 등락을 거듭합니다. 저점에 매수하고 고점에 매도하여 시세차익을 실현하세요.</p>
+          <div id="stock-market-list" class="grid-cards"></div>
+        </div>
+      </section>
+
+      <!-- 5. 카지노 탭 -->
+      <section id="tab-casino" class="tab-panel">
+        <div class="panel-card">
+          <h3>🎰 지하 럭키 카지노</h3>
+          <p class="desc-text">인생 한 방! 슬롯머신과 홀짝 코인 플립으로 재산을 불려보세요.</p>
+          <div class="casino-grid">
+            <div class="sub-card">
+              <h4>🎰 3-릴 슬롯머신</h4>
+              <div id="slot-display" class="slot-machine-box">🍒 | 🍒 | 🍒</div>
+              <div class="bet-input-wrap">
+                <input type="number" id="slot-bet" value="5000" min="1000" step="1000">
+                <button id="btn-slot-spin" class="btn primary">슬롯 당기기</button>
+              </div>
+            </div>
+            <div class="sub-card">
+              <h4>🪙 홀짝 코인 플립 (승률 48% / 2배)</h4>
+              <p class="desc-text">앞면/뒷면을 맞춰보세요.</p>
+              <div class="bet-input-wrap">
+                <input type="number" id="coin-bet" value="10000" min="1000" step="1000">
+                <button id="btn-coin-flip" class="btn secondary">코인 던지기</button>
+              </div>
+            </div>
+          </div>
+          <div id="casino-log" class="log-box">결과가 여기에 표시됩니다.</div>
+        </div>
+      </section>
+
+      <!-- 6. 관리자 패널 탭 -->
+      <section id="tab-admin" class="tab-panel">
+        <div class="panel-card admin-border">
+          <h3>👑 최고 관리자 제어 패널</h3>
+          <p class="desc-text">서버 터미널 콘솔(`/admin add &lt;아이디&gt;`)을 통해 부여받은 권한입니다.</p>
+          <div class="admin-controls">
+            <input type="text" id="admin-target-user" placeholder="대상 유저 아이디">
+            <button id="btn-admin-give-money" class="btn warning">₩100,000,000 (1억) 즉시 지급</button>
+            <button id="btn-admin-feed" class="btn success">포만감 100% 충전</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- 토스트 알림창 -->
+  <div id="toast-box" class="toast-container"></div>
+
+  <script src="client.js"></script>
+</body>
+</html>
