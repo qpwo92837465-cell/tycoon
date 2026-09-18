@@ -1,5 +1,5 @@
 const socket = io();
-let myData = null, otherPlayers = {}, jobsCache = [], vendingCache = [];
+let myData = null, otherPlayers = {}, jobsCache = [], vendingCache = [], stocksCache = [];
 let myPos = { x: 1500, y: 1500 };
 let currentActionTarget = null, isFishing = false, fishingTimer = null;
 const keys = {};
@@ -62,16 +62,17 @@ document.getElementById('btn-login').onclick = () => {
 };
 
 socket.on('notify', d => showToast(d.msg, d.success));
-socket.on('auth:success', ({ username, userData, jobs, vending }) => {
+socket.on('auth:success', ({ username, userData, jobs, vending, stocks }) => {
   document.getElementById('auth-modal').classList.add('hidden');
   document.getElementById('game-app').classList.remove('hidden');
-  myData = userData; jobsCache = jobs; vendingCache = vending;
+  myData = userData; jobsCache = jobs; vendingCache = vending; stocksCache = stocks || [];
   renderAll();
   startCanvasLoop();
 });
 
 socket.on('player:sync', data => { myData = data; renderAll(); });
 socket.on('players:update', players => { otherPlayers = players; });
+socket.on('stocks:update', stocks => { stocksCache = stocks; });
 
 function renderAll() {
   const maxH = myData.maxHunger || 100;
@@ -98,15 +99,12 @@ function renderAll() {
     }).join('');
 }
 
-// 상단 버튼용 텔레포트 함수
 function teleportTo(x, y) {
-  myPos.x = x;
-  myPos.y = y;
+  myPos.x = x; myPos.y = y;
   socket.emit('player:move', myPos);
   showToast('🌀 해당 장소로 즉시 이동했습니다!', true);
 }
 
-// ZEP 감성 아바타 및 타일 맵 렌더러
 function startCanvasLoop() {
   const canvas = document.getElementById('world-canvas');
   const ctx = canvas.getContext('2d');
@@ -114,7 +112,9 @@ function startCanvasLoop() {
   const buildings = [
     { x: 500, y: 500, w: 180, h: 120, name: '🏪 24시 편의점', id: 'vending', color: '#3b82f6' },
     { x: 2300, y: 500, w: 180, h: 120, name: '🎣 힐링 낚시터', id: 'fishing', color: '#10b981' },
-    { x: 1400, y: 2200, w: 180, h: 120, name: '⚡ 캐릭터 상점', id: 'upgrade', color: '#f59e0b' }
+    { x: 1400, y: 2200, w: 180, h: 120, name: '⚡ 캐릭터 상점', id: 'upgrade', color: '#f59e0b' },
+    { x: 500, y: 2200, w: 180, h: 120, name: '🎰 VIP 카지노', id: 'casino', color: '#ef4444' },
+    { x: 2300, y: 2200, w: 180, h: 120, name: '📈 주식시장', id: 'stock', color: '#8b5cf6' }
   ];
 
   setInterval(() => {
@@ -141,7 +141,6 @@ function startCanvasLoop() {
     ctx.save();
     ctx.translate(camX, camY);
 
-    // 알록달록한 잔디 타일 격자 패턴 그리기
     const tileSize = 60;
     for (let x = 0; x < 3000; x += tileSize) {
       for (let y = 0; y < 3000; y += tileSize) {
@@ -153,8 +152,6 @@ function startCanvasLoop() {
     }
 
     let foundTarget = null;
-
-    // 건물 렌더링
     buildings.forEach(b => {
       ctx.fillStyle = b.color;
       ctx.fillRect(b.x, b.y, b.w, b.h);
@@ -178,36 +175,28 @@ function startCanvasLoop() {
       popup.classList.add('hidden');
     }
 
-    // 다른 플레이어 아바타 그리기
     for (let id in otherPlayers) {
       let p = otherPlayers[id];
       drawAvatar(ctx, p.x, p.y, p.username, p.avatarColor || '#f43f5e');
     }
 
-    // 내 아바타 그리기
     drawAvatar(ctx, myPos.x, myPos.y, myData.username + ' (나)', '#4f46e5');
-
     ctx.restore();
   }, 1000 / 60);
 }
 
-// ZEP 감성 아바타 그리기 함수
 function drawAvatar(ctx, x, y, name, color) {
-  // 그림자
   ctx.fillStyle = 'rgba(0,0,0,0.2)';
   ctx.beginPath(); ctx.ellipse(x, y + 16, 12, 6, 0, 0, Math.PI * 2); ctx.fill();
 
-  // 몸통
   ctx.fillStyle = color;
   ctx.fillRect(x - 10, y - 4, 20, 20);
   ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(x - 10, y - 4, 20, 20);
 
-  // 머리
   ctx.fillStyle = '#fde68a';
   ctx.beginPath(); ctx.arc(x, y - 12, 12, 0, Math.PI * 2); ctx.fill();
   ctx.stroke();
 
-  // 닉네임 뱃지
   ctx.fillStyle = 'rgba(0,0,0,0.7)';
   ctx.fillRect(x - name.length * 3.5 - 6, y - 38, name.length * 7 + 12, 18);
   ctx.fillStyle = '#ffffff'; ctx.font = 'bold 11px sans-serif';
@@ -246,7 +235,56 @@ function openBuildingModal(id) {
       <p>미끼를 장착하고 대어를 낚아보세요!</p>
       <button class="btn primary huge" id="btn-fish-action" style="margin-top:15px;padding:15px;" onclick="startFishingProcess()">🎣 낚싯대 던지기 (3초 쿨타임)</button>
       <div id="fishing-status-text" style="margin-top:10px;text-align:center;color:#f59e0b;font-weight:bold;"></div>`;
+  } else if (id === 'stock') {
+    title.textContent = '📈 주식시장';
+    body.innerHTML = stocksCache.map(s => `
+      <div class="card-item">
+        <div><h4>${s.name} (${s.symbol})</h4><p class="text-green">₩${s.price.toLocaleString()} | 보유: ${(myData.stocks && myData.stocks[s.symbol]) || 0}주</p></div>
+        <div style="display:flex;gap:5px;">
+          <button class="btn primary" style="width:auto;padding:6px;" onclick="const amt=prompt('매수 수량:','1');if(amt)socket.emit('stock:buy',{symbol:'${s.symbol}',amount:parseInt(amt)})">매수</button>
+          <button class="btn secondary" style="width:auto;padding:6px;" onclick="const amt=prompt('매도 수량:','1');if(amt)socket.emit('stock:sell',{symbol:'${s.symbol}',amount:parseInt(amt)})">매도</button>
+        </div>
+      </div>`).join('');
+  } else if (id === 'casino') {
+    title.textContent = '🎰 VIP 블랙잭 카지노';
+    body.innerHTML = `
+      <p>실시간 딜러와의 사투! 블랙잭으로 자산을 불려보세요.</p>
+      <div class="input-group" style="margin-top:10px;"><input type="number" id="bj-bet-input" value="10000" placeholder="배팅금"></div>
+      <button class="btn warning" onclick="startBJGame()">블랙잭 시작</button>
+      <div id="bj-live-table" class="hidden" style="margin-top:15px;background:#111827;padding:15px;border-radius:8px;">
+        <p>딜러 패: <span id="bj-d-cards"></span> (<span id="bj-d-score">?</span>)</p>
+        <p style="margin-top:8px;">내 패: <span id="bj-p-cards"></span> (<span id="bj-p-score">0</span>)</p>
+        <div style="display:flex; gap:5px; margin-top:12px;">
+          <button class="btn success" onclick="socket.emit('casino:blackjack:hit')">Hit</button>
+          <button class="btn warning" onclick="socket.emit('casino:blackjack:stand')">Stand</button>
+        </div>
+      </div>`;
   }
+}
+
+function startBJGame() {
+  const bet = parseInt(document.getElementById('bj-bet-input').value, 10);
+  socket.emit('casino:blackjack:start', { bet });
+  document.getElementById('bj-live-table').classList.remove('hidden');
+}
+
+socket.on('casino:bj:state', res => {
+  document.getElementById('bj-p-cards').textContent = res.pHand.map(c=>c.suit+c.val).join(' ');
+  document.getElementById('bj-d-cards').textContent = res.dHand.map(c=>c.suit+c.val).join(' ');
+  document.getElementById('bj-p-score').textContent = res.pScore;
+  document.getElementById('bj-d-score').textContent = res.dScore;
+});
+
+socket.on('casino:bj:result', res => {
+  showToast(res.msg, res.win);
+  document.getElementById('bj-p-cards').textContent = res.pHand.map(c=>c.suit+c.val).join(' ');
+  document.getElementById('bj-d-cards').textContent = res.dHand.map(c=>c.suit+c.val).join(' ');
+  document.getElementById('bj-p-score').textContent = calcScore(res.pHand);
+  document.getElementById('bj-d-score').textContent = calcScore(res.dHand);
+});
+
+function calcScore(hand) {
+  return hand.reduce((acc, c) => acc + (['J','Q','K'].includes(c.val)?10:c.val==='A'?11:parseInt(c.val)||0), 0);
 }
 
 function closeModal() {
@@ -274,10 +312,8 @@ function startFishingProcess() {
   btn.style.background = '#cbd5e1';
 
   status.textContent = '⏳ 낚싯대를 던졌습니다... (3초 대기)';
-  
   setTimeout(() => {
     status.textContent = '🌊 찌가 물 위에 둥둥 떠 있습니다... 입질 대기 중 (5초)';
-    
     fishingTimer = setTimeout(() => {
       socket.emit('fish:catch');
       status.textContent = '🎉 물고기가 걸렸습니다! 가방을 확인하세요.';
@@ -285,6 +321,5 @@ function startFishingProcess() {
       btn.disabled = false;
       btn.style.background = '#4f46e5';
     }, 5000);
-
   }, 3000);
 }
