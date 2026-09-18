@@ -7,7 +7,6 @@
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-  <!-- 로그인 / 회원가입 모달 -->
   <div id="auth-modal" class="modal-backdrop">
     <div class="modal-box">
       <h2 class="title-logo">🏫 ZEP CITY LIFE</h2>
@@ -20,16 +19,16 @@
     </div>
   </div>
 
-  <!-- 메인 게임 앱 -->
   <div id="game-app" class="hidden">
     <header class="hud-header">
       <div class="user-info"><strong id="hud-username">게스트</strong></div>
-      <!-- 상단 텔레포트 바로가기 버튼들 -->
       <div class="teleport-nav-bar">
         <button class="btn-tp" onclick="teleportTo(1500, 1500)">🏠 중앙광장</button>
         <button class="btn-tp" onclick="teleportTo(580, 700)">🏪 편의점</button>
         <button class="btn-tp" onclick="teleportTo(2380, 700)">🎣 낚시터</button>
         <button class="btn-tp" onclick="teleportTo(1400, 2200)">⚡ 상점</button>
+        <button class="btn-tp" onclick="openBuildingModal('casino')" style="background:#f59e0b;">🎰 VIP 카지노</button>
+        <button class="btn-tp" onclick="openBuildingModal('stock')" style="background:#10b981;">📈 주식시장</button>
       </div>
       <div class="stats-container">
         <div class="stat-card">자산 <span class="stat-value text-green" id="hud-money">₩0</span></div>
@@ -45,7 +44,7 @@
       <div class="canvas-container">
         <canvas id="world-canvas" width="980" height="650"></canvas>
         <div id="interaction-popup" class="hidden">⌨️ **[E]** 키를 눌러 상호작용하기</div>
-        <div class="controls-guide">🕹️ 이동: 방향키/WASD | 상단 버튼으로 즉시 텔레포트 | [ESC] 설정</div>
+        <div class="controls-guide">🕹️ 이동: 방향키/WASD | 상단 버튼 텔레포트 | [ESC] 설정</div>
       </div>
 
       <div class="side-panel">
@@ -68,7 +67,6 @@
     </div>
   </div>
 
-  <!-- 상점 및 건물 모달 -->
   <div id="building-modal" class="modal-backdrop hidden">
     <div class="modal-box large">
       <h2 id="modal-title">건물 이름</h2>
@@ -77,7 +75,6 @@
     </div>
   </div>
 
-  <!-- ESC 설정 모달 -->
   <div id="esc-settings-modal" class="modal-backdrop hidden">
     <div class="modal-box">
       <h2>⚙️ 게임 설정</h2>
