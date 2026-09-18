@@ -40,7 +40,6 @@ async function saveUser(userObj) {
   await supabase.from('users').upsert([payload], { onConflict: 'username' });
 }
 
-// 💼 승진 조건 대폭 완화
 const JOBS = [
   { id: 'job_0', name: '무직 / 취준생', salary: 0, reqMoney: 0, workEnergyCost: 0 },
   { id: 'job_1', name: '편의점 야간 알바', salary: 40000, reqMoney: 0, workEnergyCost: 2 },
@@ -114,7 +113,6 @@ setInterval(() => {
   io.emit('stocks:update', STOCKS);
 }, 5000);
 
-// 배고픔 소모 대폭 완화된 방치형 월급 루프
 setInterval(async () => {
   for (let socketId in onlinePlayers) {
     const pInfo = onlinePlayers[socketId];
@@ -294,7 +292,6 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `${item.name} 구매 완료` });
   });
 
-  // 물고기 판매 및 아이템 사용 완벽 연동
   socket.on('inventory:use', async (itemId) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
@@ -342,6 +339,7 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `${stock.name} ${amount}주 매도 완료` });
   });
 
+  // ♠️ 블랙잭 (21 도달 시 자동 스탠드 기능 포함)
   socket.on('casino:blackjack:start', async ({ bet }) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
@@ -351,18 +349,49 @@ io.on('connection', (socket) => {
     let deck = getDeck();
     let pHand = [deck.pop(), deck.pop()];
     let dHand = [deck.pop(), deck.pop()];
+    let pScore = calcBJ(pHand);
+
     socket.data.bj = { bet, deck, pHand, dHand };
 
-    socket.emit('casino:bj:state', { pHand, dHand: [dHand[0], { suit: '?', val: '?' }], pScore: calcBJ(pHand), dScore: '?' });
+    if (pScore === 21) {
+      // 시작하자마자 21이면 자동 스탠드 처리
+      let dScore = calcBJ(dHand);
+      let reward = bet * 2.5;
+      u.money += reward; await saveUser(u); await syncUser();
+      socket.emit('casino:bj:result', { win: true, pHand, dHand, pScore, dScore, reward, msg: '블랙잭! 즉시 승리!' });
+      delete socket.data.bj;
+      return;
+    }
+
+    socket.emit('casino:bj:state', { pHand, dHand: [dHand[0], { suit: '?', val: '?' }], pScore, dScore: '?' });
   });
 
-  socket.on('casino:blackjack:hit', () => {
+  socket.on('casino:blackjack:hit', async () => {
     const bj = socket.data.bj;
     if (!bj) return;
     bj.pHand.push(bj.deck.pop());
     const score = calcBJ(bj.pHand);
+
     if (score > 21) {
-      socket.emit('casino:bj:result', { win: false, pHand: bj.pHand, dHand: bj.dHand, msg: 'Bust! 패배했습니다.' });
+      socket.emit('casino:bj:result', { win: false, pHand: bj.pHand, dHand: bj.dHand, pScore: score, dScore: calcBJ(bj.dHand), msg: 'Bust! 패배했습니다.' });
+      delete socket.data.bj;
+    } else if (score === 21) {
+      // 21이 되면 자동으로 Stand 실행!
+      socket.emit('notify', { success: true, msg: '21 달성! 자동으로 스탠드합니다.' });
+      // 자동 스탠드 로직 태우기
+      const u = await getUserByUsername(currentUser);
+      let dScore = calcBJ(bj.dHand);
+      while (dScore < 17) {
+        bj.dHand.push(bj.deck.pop());
+        dScore = calcBJ(bj.dHand);
+      }
+      let reward = 0, msg = '';
+      if (dScore > 21 || 21 > dScore) { reward = bj.bet * 2; msg = '21 자동스탠드 승리!'; }
+      else if (21 === dScore) { reward = bj.bet; msg = '무승부 (푸시)'; }
+      else { msg = '딜러 승리'; }
+
+      u.money += reward; await saveUser(u); await syncUser();
+      socket.emit('casino:bj:result', { win: reward > bj.bet, pHand: bj.pHand, dHand: bj.dHand, pScore: 21, dScore, reward, msg });
       delete socket.data.bj;
     } else {
       socket.emit('casino:bj:state', { pHand: bj.pHand, dHand: [bj.dHand[0], { suit: '?', val: '?' }], pScore: score, dScore: '?' });
@@ -389,6 +418,72 @@ io.on('connection', (socket) => {
     delete socket.data.bj;
   });
 
+  // 🎲 바카라 (Player / Banker / Tie)
+  socket.on('casino:bacc:play', async ({ bet, choice }) => {
+    if (!currentUser) return;
+    const u = await getUserByUsername(currentUser);
+    if (u.money < bet || bet < 1000) return socket.emit('notify', { success: false, msg: '배팅금 부족' });
+    u.money -= bet;
+
+    const pCard = Math.floor(Math.random() * 9) + 1;
+    const bCard = Math.floor(Math.random() * 9) + 1;
+    let winner = pCard > bCard ? 'PLAYER' : pCard < bCard ? 'BANKER' : 'TIE';
+    let reward = 0;
+
+    if (winner === choice) {
+      reward = choice === 'TIE' ? bet * 9 : bet * 2;
+      u.money += reward;
+      socket.emit('notify', { success: true, msg: `바카라 승리! (+₩${reward.toLocaleString()})` });
+    } else {
+      socket.emit('notify', { success: false, msg: `바카라 패배... (승자: ${winner})` });
+    }
+    await saveUser(u); await syncUser();
+    socket.emit('casino:bacc:result', { pCard, bCard, winner, reward });
+  });
+
+  // ⬆️ 하이로우 (High / Low 예측)
+  socket.on('casino:hl:play', async ({ bet, choice }) => {
+    if (!currentUser) return;
+    const u = await getUserByUsername(currentUser);
+    if (u.money < bet || bet < 1000) return socket.emit('notify', { success: false, msg: '배팅금 부족' });
+    u.money -= bet;
+
+    const base = Math.floor(Math.random() * 13) + 1;
+    const next = Math.floor(Math.random() * 13) + 1;
+    let win = (choice === 'HIGH' && next > base) || (choice === 'LOW' && next < base);
+    let reward = win ? bet * 2 : 0;
+    if (win) u.money += reward;
+
+    await saveUser(u); await syncUser();
+    socket.emit('casino:hl:result', { base, next, win, reward });
+  });
+
+  // 🎰 슬롯머신 (3개 맞추기)
+  socket.on('casino:slot:play', async ({ bet }) => {
+    if (!currentUser) return;
+    const u = await getUserByUsername(currentUser);
+    if (u.money < bet || bet < 1000) return socket.emit('notify', { success: false, msg: '배팅금 부족' });
+    u.money -= bet;
+
+    const symbols = ['🍒', '🍋', '🍊', '🔔', '💎', '7️⃣'];
+    const r1 = symbols[Math.floor(Math.random() * symbols.length)];
+    const r2 = symbols[Math.floor(Math.random() * symbols.length)];
+    const r3 = symbols[Math.floor(Math.random() * symbols.length)];
+
+    let mult = 0;
+    if (r1 === r2 && r2 === r3) {
+      mult = r1 === '7️⃣' ? 50 : r1 === '💎' ? 30 : 10;
+    } else if (r1 === r2 || r2 === r3 || r1 === r3) {
+      mult = 2;
+    }
+
+    let reward = bet * mult;
+    if (reward > 0) u.money += reward;
+
+    await saveUser(u); await syncUser();
+    socket.emit('casino:slot:result', { r1, r2, r3, reward, mult });
+  });
+
   socket.on('disconnect', () => {
     delete onlinePlayers[socket.id];
     currentUser = null;
@@ -396,4 +491,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 모든 버그 수정 완료 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 카지노 풀버전(블랙잭 21자동스탠드/바카라/하이로우/슬롯) 실행됨 (포트: ${PORT})`));
