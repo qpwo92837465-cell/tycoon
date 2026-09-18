@@ -98,22 +98,64 @@ const FISH_ITEMS = [
   { id: 'f_30', name: '세계관을 삼킨 태초의 리바이아산', grade: '초월', value: 1000000000, weight: 0.003 }
 ];
 
+let STOCKS = [
+  { symbol: 'NVX', name: '엔빅스 테크놀로지', price: 150000, min: 20000, max: 2000000 },
+  { symbol: 'BIO', name: '그린 바이오팜', price: 42000, min: 5000, max: 800000 },
+  { symbol: 'SPX', name: '스페이스 코스모', price: 310000, min: 50000, max: 5000000 },
+  { symbol: 'COIN', name: '도지 로켓 코인', price: 1200, min: 50, max: 100000 },
+];
+
+setInterval(() => {
+  STOCKS.forEach(s => {
+    const rate = (Math.random() * 0.24 - 0.11);
+    s.price = Math.max(s.min, Math.min(s.max, Math.round(s.price * (1 + rate))));
+  });
+  io.emit('stocks:update', STOCKS);
+}, 5000);
+
+// [오프라인 돈 복사 버그 방지] 오직 접속 중인 온라인 유저에게만 30초마다 월급 지급
 setInterval(async () => {
-  const { data: users } = await supabase.from('users').select('*');
-  if (!users) return;
-  for (let u of users) {
+  for (let socketId in onlinePlayers) {
+    const pInfo = onlinePlayers[socketId];
+    if (!pInfo || !pInfo.username) continue;
+
+    const u = await getUserByUsername(pInfo.username);
+    if (!u) continue;
+
     const job = JOBS[u.jobindex] || JOBS[0];
     if (u.hunger > 0 && job.salary > 0) {
       u.money += job.salary;
       u.hunger = Math.max(0, u.hunger - job.workEnergyCost);
       await saveUser(u);
+
+      io.to(socketId).emit('player:sync', {
+        username: u.username, money: u.money, jobIndex: u.jobindex,
+        hunger: u.hunger, maxHunger: u.maxhunger || 100, isAdmin: u.isadmin,
+        inventory: u.inventory || {}, stocks: u.stocks || {}, upgrades: u.upgrades || { fishingRod: 1, stomach: 1 }
+      });
     }
   }
-  io.emit('player:sync:all');
 }, 30000);
 
 app.use(express.static(path.join(__dirname, 'public')));
 const onlinePlayers = {};
+
+function getDeck() {
+  const suits = ['♠', '♥', '♦', '♣'], values = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+  let deck = [];
+  for(let s of suits) for(let v of values) deck.push({ suit: s, val: v });
+  return deck.sort(() => Math.random() - 0.5);
+}
+function calcBJ(hand) {
+  let sum = 0, aces = 0;
+  hand.forEach(c => {
+    if(c.val === 'A') { aces++; sum += 11; }
+    else if(['J','Q','K'].includes(c.val)) sum += 10;
+    else sum += parseInt(c.val);
+  });
+  while(sum > 21 && aces > 0) { sum -= 10; aces--; }
+  return sum;
+}
 
 io.on('connection', (socket) => {
   let currentUser = null;
@@ -125,7 +167,7 @@ io.on('connection', (socket) => {
       socket.emit('player:sync', {
         username: u.username, money: u.money, jobIndex: u.jobindex,
         hunger: u.hunger, maxHunger: u.maxhunger || 100, isAdmin: u.isadmin,
-        inventory: u.inventory || {}, upgrades: u.upgrades || { fishingRod: 1, stomach: 1 }
+        inventory: u.inventory || {}, stocks: u.stocks || {}, upgrades: u.upgrades || { fishingRod: 1, stomach: 1 }
       });
     }
   }
@@ -133,13 +175,21 @@ io.on('connection', (socket) => {
   socket.on('auth:register', async ({ username, password }) => {
     if (!username || username.trim().length < 2) return socket.emit('notify', { success: false, msg: '아이디는 2자 이상 입력해주세요.' });
     if (await getUserByUsername(username)) return socket.emit('notify', { success: false, msg: '이미 존재하는 아이디입니다.' });
-    await saveUser({ username, passwordHash: hashPassword(password), money: 200000, jobIndex: 0, hunger: 100, maxHunger: 100, isAdmin: false, inventory: {}, upgrades: { fishingRod: 1, stomach: 1 } });
+    await saveUser({ username, passwordHash: hashPassword(password), money: 200000, jobIndex: 0, hunger: 100, maxHunger: 100, isAdmin: false, inventory: {}, stocks: {}, upgrades: { fishingRod: 1, stomach: 1 } });
     socket.emit('notify', { success: true, msg: '가입 완료! 로그인하세요.' });
   });
 
   socket.on('auth:login', async ({ username, password }) => {
     const u = await getUserByUsername(username);
     if (!u || u.passwordhash !== hashPassword(password)) return socket.emit('notify', { success: false, msg: '로그인 실패' });
+    
+    // [분신 방지] 이미 접속 중인 동일 유저는 기존 세션 강제 제거
+    for (let id in onlinePlayers) {
+      if (onlinePlayers[id].username === username) {
+        delete onlinePlayers[id];
+      }
+    }
+
     currentUser = username;
     onlinePlayers[socket.id] = { username: u.username, x: 1500, y: 1500, avatarColor: '#' + Math.floor(Math.random()*16777215).toString(16) };
 
@@ -148,10 +198,12 @@ io.on('connection', (socket) => {
       userData: { 
         username: u.username, money: u.money, jobIndex: u.jobindex, 
         hunger: u.hunger, maxHunger: u.maxhunger || 100, isAdmin: u.isadmin, 
-        inventory: u.inventory || {}, upgrades: u.upgrades || { fishingRod: 1, stomach: 1 }
+        inventory: u.inventory || {}, stocks: u.stocks || {}, upgrades: u.upgrades || { fishingRod: 1, stomach: 1 }
       },
-      jobs: JOBS, vending: VENDING_ITEMS
+      jobs: JOBS, vending: VENDING_ITEMS, stocks: STOCKS
     });
+
+    io.emit('players:update', onlinePlayers);
   });
 
   socket.on('player:move', (pos) => {
@@ -199,16 +251,12 @@ io.on('connection', (socket) => {
 
     for (let f of FISH_ITEMS) {
       currentSum += (f.weight * (rodLevel * 0.3) * baitBonus);
-      if (randomVal <= currentSum) {
-        caught = f;
-        break;
-      }
+      if (randomVal <= currentSum) { caught = f; break; }
     }
 
     if (!u.inventory) u.inventory = {};
     u.inventory[caught.id] = (u.inventory[caught.id] || 0) + 1;
-    await saveUser(u);
-    await syncUser();
+    await saveUser(u); await syncUser();
     socket.emit('notify', { success: true, msg: `🎣 [낚시 성공] [${caught.grade}] ${caught.name} 획득!` });
   });
 
@@ -222,17 +270,14 @@ io.on('connection', (socket) => {
       const cost = curLv * 150000;
       if (curLv >= 10) return socket.emit('notify', { success: false, msg: '낚싯대가 이미 최고 레벨입니다.' });
       if (u.money < cost) return socket.emit('notify', { success: false, msg: `비용 부족 (필요: ₩${cost.toLocaleString()})` });
-      u.money -= cost;
-      u.upgrades.fishingRod++;
+      u.money -= cost; u.upgrades.fishingRod++;
       socket.emit('notify', { success: true, msg: `✨ 낚싯대 업그레이드 완료! (Lv.${u.upgrades.fishingRod})` });
-    } 
-    else if (type === 'stomach') {
+    } else if (type === 'stomach') {
       const curLv = u.upgrades.stomach;
       const cost = Math.round(200000 * Math.pow(1.3, curLv - 1));
       if (curLv >= 19) return socket.emit('notify', { success: false, msg: '위장이 이미 최고 레벨입니다!' });
       if (u.money < cost) return socket.emit('notify', { success: false, msg: `비용 부족 (필요: ₩${cost.toLocaleString()})` });
-      u.money -= cost;
-      u.upgrades.stomach++;
+      u.money -= cost; u.upgrades.stomach++;
       u.maxhunger = Math.min(1000, 100 + (u.upgrades.stomach - 1) * 50);
       socket.emit('notify', { success: true, msg: `🍖 위장 업그레이드! (최대 포만감: ${u.maxhunger})` });
     }
@@ -272,11 +317,84 @@ io.on('connection', (socket) => {
     await saveUser(u); await syncUser();
   });
 
+  socket.on('stock:buy', async ({ symbol, amount }) => {
+    if (!currentUser || amount <= 0) return;
+    const u = await getUserByUsername(currentUser);
+    const stock = STOCKS.find(s => s.symbol === symbol);
+    const cost = stock.price * amount;
+    if (u.money < cost) return socket.emit('notify', { success: false, msg: '잔액 부족' });
+    u.money -= cost;
+    if (!u.stocks) u.stocks = {};
+    u.stocks[symbol] = (u.stocks[symbol] || 0) + amount;
+    await saveUser(u); await syncUser();
+    socket.emit('notify', { success: true, msg: `${stock.name} ${amount}주 매수 완료` });
+  });
+
+  socket.on('stock:sell', async ({ symbol, amount }) => {
+    if (!currentUser || amount <= 0) return;
+    const u = await getUserByUsername(currentUser);
+    const stock = STOCKS.find(s => s.symbol === symbol);
+    const owned = (u.stocks && u.stocks[symbol]) || 0;
+    if (owned < amount) return socket.emit('notify', { success: false, msg: '보유 주식 부족' });
+    u.stocks[symbol] -= amount;
+    if (u.stocks[symbol] === 0) delete u.stocks[symbol];
+    u.money += stock.price * amount;
+    await saveUser(u); await syncUser();
+    socket.emit('notify', { success: true, msg: `${stock.name} ${amount}주 매도 완료` });
+  });
+
+  socket.on('casino:blackjack:start', async ({ bet }) => {
+    if (!currentUser) return;
+    const u = await getUserByUsername(currentUser);
+    if (u.money < bet || bet < 1000) return socket.emit('notify', { success: false, msg: '배팅금 부족' });
+    u.money -= bet; await saveUser(u); await syncUser();
+
+    let deck = getDeck();
+    let pHand = [deck.pop(), deck.pop()];
+    let dHand = [deck.pop(), deck.pop()];
+    socket.data.bj = { bet, deck, pHand, dHand };
+
+    socket.emit('casino:bj:state', { pHand, dHand: [dHand[0], { suit: '?', val: '?' }], pScore: calcBJ(pHand), dScore: '?' });
+  });
+
+  socket.on('casino:blackjack:hit', () => {
+    const bj = socket.data.bj;
+    if (!bj) return;
+    bj.pHand.push(bj.deck.pop());
+    const score = calcBJ(bj.pHand);
+    if (score > 21) {
+      socket.emit('casino:blackjack:result', { win: false, pHand: bj.pHand, dHand: bj.dHand, msg: 'Bust! 패배했습니다.' });
+      delete socket.data.bj;
+    } else {
+      socket.emit('casino:bj:state', { pHand: bj.pHand, dHand: [bj.dHand[0], { suit: '?', val: '?' }], pScore: score, dScore: '?' });
+    }
+  });
+
+  socket.on('casino:blackjack:stand', async () => {
+    const bj = socket.data.bj;
+    if (!bj) return;
+    const u = await getUserByUsername(currentUser);
+    let dScore = calcBJ(bj.dHand);
+    while (dScore < 17) {
+      bj.dHand.push(bj.deck.pop());
+      dScore = calcBJ(bj.dHand);
+    }
+    const pScore = calcBJ(bj.pHand);
+    let reward = 0, msg = '';
+    if (dScore > 21 || pScore > dScore) { reward = bj.bet * 2; msg = '블랙잭 승리!'; }
+    else if (pScore === dScore) { reward = bj.bet; msg = '무승부 (푸시)'; }
+    else { msg = '딜러 승리'; }
+
+    u.money += reward; await saveUser(u); await syncUser();
+    socket.emit('casino:bj:result', { win: reward > bj.bet, pHand: bj.pHand, dHand: bj.dHand, pScore, dScore, reward, msg });
+    delete socket.data.bj;
+  });
+
   socket.on('disconnect', () => {
     delete onlinePlayers[socket.id];
     currentUser = null;
-    socket.broadcast.emit('players:update', onlinePlayers);
+    io.emit('players:update', onlinePlayers);
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] ZEP 스타일 메타버스 타이쿤 실행됨 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 최종 완성형 서버 실행됨 (포트: ${PORT})`));
