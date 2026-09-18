@@ -60,7 +60,9 @@ const VENDING_ITEMS = [
   { id: 'snack', name: '초코바', cost: 3500, restoreHunger: 35 },
   { id: 'gimbap', name: '참치 삼각김밥', cost: 7000, restoreHunger: 60 },
   { id: 'bento', name: '프리미엄 도시락', cost: 25000, restoreHunger: 100 },
-  { id: 'steak', name: '한우 특상 스테이크', cost: 120000, restoreHunger: 180 }
+  { id: 'steak', name: '한우 특상 스테이크', cost: 120000, restoreHunger: 180 },
+  { id: 'bait_normal', name: '지렁이 미끼', cost: 5000, type: 'bait', bonus: 1 },
+  { id: 'bait_gold', name: '황금 새우 미끼', cost: 30000, type: 'bait', bonus: 2.5 }
 ];
 
 const FISH_ITEMS = [
@@ -119,78 +121,34 @@ io.on('connection', (socket) => {
   }
 
   socket.on('auth:register', async ({ username, password }) => {
-    if (!username || username.trim().length < 2) {
-      return socket.emit('notify', { success: false, msg: '아이디는 2자 이상 입력해주세요.' });
-    }
-    if (!password || password.trim().length < 2) {
-      return socket.emit('notify', { success: false, msg: '비밀번호를 입력해주세요.' });
-    }
-
-    // 이미 존재하는지 확인
-    const existing = await getUserByUsername(username.trim());
-    if (existing) {
-      return socket.emit('notify', { success: false, msg: '이미 존재하는 아이디입니다.' });
-    }
-
-    const newUserData = {
-      username: username.trim(),
-      passwordHash: hashPassword(password),
-      money: 20000,
-      jobIndex: 0,
-      hunger: 100,
-      maxHunger: 100,
-      isAdmin: false,
-      inventory: {},
-      upgrades: { fishingRod: 1, stomach: 1 }
-    };
-
-    // DB에 저장 시도
-    await saveUser(newUserData);
-
-    // 저장 직후 바로 확인
-    const verifyUser = await getUserByUsername(username.trim());
-    if (!verifyUser) {
-      return socket.emit('notify', { success: false, msg: '회원가입 데이터 저장 실패 (DB 오류)' });
-    }
-
-    socket.emit('notify', { success: true, msg: '회원가입 완료! 이제 로그인하세요.' });
+    if (!username || username.trim().length < 2) return socket.emit('notify', { success: false, msg: '아이디는 2자 이상 입력해주세요.' });
+    if (await getUserByUsername(username)) return socket.emit('notify', { success: false, msg: '이미 존재하는 아이디입니다.' });
+    await saveUser({ username, passwordHash: hashPassword(password), money: 200000, jobIndex: 0, hunger: 100, maxHunger: 100, isAdmin: false, inventory: {}, upgrades: { fishingRod: 1, stomach: 1 } });
+    socket.emit('notify', { success: true, msg: '가입 완료! 로그인하세요.' });
   });
 
   socket.on('auth:login', async ({ username, password }) => {
-    if (!username || !password) {
-      return socket.emit('notify', { success: false, msg: '아이디와 비밀번호를 입력해주세요.' });
-    }
-
-    const u = await getUserByUsername(username.trim());
-    if (!u) {
-      return socket.emit('notify', { success: false, msg: '존재하지 않는 아이디입니다.' });
-    }
-
-    // 소문자 column 대응 (passwordhash 또는 passwordHash)
-    const storedHash = u.passwordhash || u.passwordHash;
-    if (storedHash !== hashPassword(password)) {
-      return socket.emit('notify', { success: false, msg: '비밀번호가 일치하지 않습니다.' });
-    }
-
-    currentUser = u.username;
-    onlinePlayers[socket.id] = { username: u.username, x: 400, y: 300 };
+    const u = await getUserByUsername(username);
+    if (!u || u.passwordhash !== hashPassword(password)) return socket.emit('notify', { success: false, msg: '로그인 실패' });
+    currentUser = username;
+    onlinePlayers[socket.id] = { username, x: 600, y: 600 };
 
     socket.emit('auth:success', {
-      username: u.username,
+      username,
       userData: { 
-        username: u.username, 
-        money: u.money, 
-        jobIndex: u.jobindex !== undefined ? u.jobindex : u.jobIndex, 
-        hunger: u.hunger, 
-        maxHunger: u.maxhunger || u.maxHunger || 100, 
-        isAdmin: u.isadmin !== undefined ? u.isadmin : u.isAdmin, 
-        inventory: u.inventory || {}, 
-        upgrades: u.upgrades || { fishingRod: 1, stomach: 1 }
+        username: u.username, money: u.money, jobIndex: u.jobindex, 
+        hunger: u.hunger, maxHunger: u.maxhunger || 100, isAdmin: u.isadmin, 
+        inventory: u.inventory || {}, upgrades: u.upgrades || { fishingRod: 1, stomach: 1 }
       },
-      stocks: STOCKS, 
-      jobs: JOBS, 
-      vending: VENDING_ITEMS
+      stocks: STOCKS, jobs: JOBS, vending: VENDING_ITEMS
     });
+  });
+
+  socket.on('player:move', (pos) => {
+    if (!currentUser || !onlinePlayers[socket.id]) return;
+    onlinePlayers[socket.id].x = pos.x;
+    onlinePlayers[socket.id].y = pos.y;
+    socket.broadcast.emit('players:update', onlinePlayers);
   });
 
   socket.on('action:promote', async () => {
@@ -206,6 +164,7 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `🎉 승진 축하합니다! [${nextJob.name}] 진급!` });
   });
 
+  // 미끼 반영 낚시 시스템
   socket.on('fish:catch', async () => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
@@ -213,14 +172,23 @@ io.on('connection', (socket) => {
 
     u.hunger -= 5;
     const rodLevel = (u.upgrades && u.upgrades.fishingRod) || 1;
-    let rand = Math.random() * 100;
-    if (rodLevel >= 2) rand *= 0.85;
-    if (rodLevel >= 3) rand *= 0.70;
-    if (rodLevel >= 4) rand *= 0.50;
+    
+    // 미끼 소모 체크 (인벤토리에 미끼가 있으면 소모하여 확률 대폭 버프)
+    let baitBonus = 1;
+    if (u.inventory) {
+      if (u.inventory['bait_gold'] && u.inventory['bait_gold'] > 0) {
+        u.inventory['bait_gold']--;
+        baitBonus = 3.0;
+      } else if (u.inventory['bait_normal'] && u.inventory['bait_normal'] > 0) {
+        u.inventory['bait_normal']--;
+        baitBonus = 1.8;
+      }
+    }
 
+    let rand = Math.random() * 100;
     let acc = 0, caught = FISH_ITEMS[0];
     for(let f of FISH_ITEMS) {
-      acc += (f.chance * (rodLevel * 0.25));
+      acc += (f.chance * (rodLevel * 0.2) * baitBonus);
       if(rand <= acc) { caught = f; break; }
     }
 
@@ -228,10 +196,10 @@ io.on('connection', (socket) => {
     u.inventory[caught.id] = (u.inventory[caught.id] || 0) + 1;
     await saveUser(u);
     await syncUser();
-    socket.emit('notify', { success: true, msg: `🎣 [Lv.${rodLevel} 낚싯대] ${caught.name} 낚시 성공!` });
+    socket.emit('notify', { success: true, msg: `🎣 [낚시 성공] ${caught.name} 획득!` });
   });
 
-socket.on('upgrade:buy', async (type) => {
+  socket.on('upgrade:buy', async (type) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
     if (!u.upgrades) u.upgrades = { fishingRod: 1, stomach: 1 };
@@ -241,29 +209,21 @@ socket.on('upgrade:buy', async (type) => {
       const cost = curLv * 150000;
       if (curLv >= 10) return socket.emit('notify', { success: false, msg: '낚싯대가 이미 최고 레벨입니다.' });
       if (u.money < cost) return socket.emit('notify', { success: false, msg: `비용 부족 (필요: ₩${cost.toLocaleString()})` });
-
       u.money -= cost;
       u.upgrades.fishingRod++;
       socket.emit('notify', { success: true, msg: `✨ 낚싯대 업그레이드 완료! (Lv.${u.upgrades.fishingRod})` });
     } 
     else if (type === 'stomach') {
       const curLv = u.upgrades.stomach;
-      
-      // [포만감 레벨업할 때마다 비용이 점점 더 비싸지도록 설계]
-      // 예: 1렙->2렙은 20만원, 레벨이 오를수록 비용이 가파르게 상승 (최대 1000까지)
       const cost = Math.round(200000 * Math.pow(1.3, curLv - 1));
-
-      if (curLv >= 19) return socket.emit('notify', { success: false, msg: '위장이 이미 최고 레벨(최대 포만감 1000)입니다!' });
+      if (curLv >= 19) return socket.emit('notify', { success: false, msg: '위장이 이미 최고 레벨입니다!' });
       if (u.money < cost) return socket.emit('notify', { success: false, msg: `비용 부족 (필요: ₩${cost.toLocaleString()})` });
-
       u.money -= cost;
       u.upgrades.stomach++;
       u.maxhunger = Math.min(1000, 100 + (u.upgrades.stomach - 1) * 50);
-      
-      socket.emit('notify', { success: true, msg: `🍖 위장 업그레이드 성공! (최대 포만감: ${u.maxhunger} / 1000)` });
+      socket.emit('notify', { success: true, msg: `🍖 위장 업그레이드! (최대 포만감: ${u.maxhunger})` });
     }
-    await saveUser(u);
-    await syncUser();
+    await saveUser(u); await syncUser();
   });
 
   socket.on('vending:buy', async (itemId) => {
@@ -286,36 +246,17 @@ socket.on('upgrade:buy', async (type) => {
     const maxH = u.maxhunger || 100;
 
     if (!u.inventory || !u.inventory[itemId] || u.inventory[itemId] <= 0) return;
-
     u.inventory[itemId]--;
     if(u.inventory[itemId] === 0) delete u.inventory[itemId];
 
-    if (item) {
+    if (item && item.type !== 'bait') {
       u.hunger = Math.min(maxH, u.hunger + item.restoreHunger);
-      socket.emit('notify', { success: true, msg: `${item.name} 섭취 (포만감 +${item.restoreHunger})` });
+      socket.emit('notify', { success: true, msg: `${item.name} 섭취 완료` });
     } else if (fish) {
       u.money += fish.value;
       socket.emit('notify', { success: true, msg: `${fish.name} 판매 완료 (+₩${fish.value.toLocaleString()})` });
     }
     await saveUser(u); await syncUser();
-  });
-
-  socket.on('admin:execute', async ({ targetUser, command, value }) => {
-    if (!currentUser) return;
-    const admin = await getUserByUsername(currentUser);
-    if (!admin || !admin.isadmin) return socket.emit('notify', { success: false, msg: '권한 없음' });
-    const target = await getUserByUsername(targetUser);
-    if (!target) return socket.emit('notify', { success: false, msg: '유저를 찾을 수 없습니다.' });
-
-    if (command === 'money') target.money += parseInt(value, 10) || 0;
-    else if (command === 'hunger') target.hunger = target.maxhunger || 100;
-    else if (command === 'item') {
-      if (!target.inventory) target.inventory = {};
-      target.inventory[value] = (target.inventory[value] || 0) + 1;
-    }
-    await saveUser(target);
-    io.emit('player:sync:all');
-    socket.emit('notify', { success: true, msg: '관리자 명령 실행 완료' });
   });
 
   socket.on('disconnect', () => {
@@ -325,4 +266,4 @@ socket.on('upgrade:buy', async (type) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 최종 업그레이드 타이쿤 서버 실행됨 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 카메라 팔로우 & E키 인터랙션 서버 실행됨 (포트: ${PORT})`));
