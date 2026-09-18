@@ -1,20 +1,41 @@
 const socket = io();
 let myData = null, otherPlayers = {}, jobsCache = [], vendingCache = [];
-let myPos = { x: 1500, y: 1500 }; // 넓어진 맵 중앙 시작
+let myPos = { x: 1500, y: 1500 };
 let currentActionTarget = null, isFishing = false, fishingTimer = null;
 const keys = {};
 
+const ITEM_NAMES = {
+  'water': '생수', 'snack': '초코바', 'gimbap': '참치 삼각김밥', 'bento': '프리미엄 도시락', 'steak': '한우 특상 스테이크',
+  'bait_normal': '지렁이 미끼', 'bait_gold': '황금 새우 미끼',
+  'f_01': '[일반] 피라미', 'f_02': '[일반] 붕어', 'f_03': '[일반] 망둥어', 'f_04': '[일반] 피라니아(새끼)', 'f_05': '[일반] 잉어',
+  'f_06': '[고급] 쏘가리', 'f_07': '[고급] 메기', 'f_08': '[고급] 송어', 'f_09': '[고급] 우럭', 'f_10': '[고급] 광어',
+  'f_11': '[희귀] 연어', 'f_12': '[희귀] 참치', 'f_13': '[희귀] 철갑상어', 'f_14': '[희귀] 문어', 'f_15': '[희귀] 전기뱀장어',
+  'f_16': '[영웅] 대왕 가오리', 'f_17': '[영웅] 청새치', 'f_18': '[영웅] 심해 아귀', 'f_19': '[영웅] 대왕 바다거북', 'f_20': '[영웅] 범고래',
+  'f_21': '[전설] 황금 상어', 'f_22': '[전설] 실러캔스', 'f_23': '[전설] 네스호 고대 괴수', 'f_24': '[전설] 크라켄(새끼)',
+  'f_25': '[신화] 포세이돈의 수호 잉어', 'f_26': '[신화] 황금 고래왕', 'f_27': '[신화] 레바테인의 비늘',
+  'f_28': '[초월] 우주 심해의 별빛 고래', 'f_29': '[초월] 차원 개척자의 환수', 'f_30': '[초월] 세계관을 삼킨 태초의 리바이아산'
+};
+
 window.addEventListener('keydown', e => {
   keys[e.key.toLowerCase()] = true;
+  if (e.key === 'Escape') {
+    const escModal = document.getElementById('esc-settings-modal');
+    const buildModal = document.getElementById('building-modal');
+    if (!buildModal.classList.contains('hidden')) closeModal();
+    else escModal.classList.toggle('hidden');
+  }
   if (e.key.toLowerCase() === 'e' && currentActionTarget) {
-    if (currentActionTarget.type === 'building') {
-      openBuildingModal(currentActionTarget.id);
-    } else if (currentActionTarget.type === 'teleport') {
-      executeTeleport(currentActionTarget.destX, currentActionTarget.destY);
-    }
+    openBuildingModal(currentActionTarget.id);
   }
 });
+
 window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+window.addEventListener('load', () => {
+  const savedUser = localStorage.getItem('tycoon_user');
+  const savedPass = localStorage.getItem('tycoon_pass');
+  if (savedUser && savedPass) socket.emit('auth:login', { username: savedUser, password: savedPass });
+});
 
 function showToast(msg, isSuccess = true) {
   const toast = document.createElement('div');
@@ -32,10 +53,16 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 document.getElementById('btn-register').onclick = () => socket.emit('auth:register', { username: document.getElementById('auth-username').value, password: document.getElementById('auth-password').value });
-document.getElementById('btn-login').onclick = () => socket.emit('auth:login', { username: document.getElementById('auth-username').value, password: document.getElementById('auth-password').value });
+document.getElementById('btn-login').onclick = () => {
+  const u = document.getElementById('auth-username').value;
+  const p = document.getElementById('auth-password').value;
+  localStorage.setItem('tycoon_user', u);
+  localStorage.setItem('tycoon_pass', p);
+  socket.emit('auth:login', { username: u, password: p });
+};
 
 socket.on('notify', d => showToast(d.msg, d.success));
-socket.on('auth:success', ({ username, userData, stocks, jobs, vending }) => {
+socket.on('auth:success', ({ username, userData, jobs, vending }) => {
   document.getElementById('auth-modal').classList.add('hidden');
   document.getElementById('game-app').classList.remove('hidden');
   myData = userData; jobsCache = jobs; vendingCache = vending;
@@ -55,7 +82,7 @@ function renderAll() {
   document.getElementById('hud-hunger-val').textContent = `${myData.hunger} / ${maxH}`;
 
   document.getElementById('job-list').innerHTML = jobsCache.map((j, idx) => `
-    <div class="card-item" style="${myData.jobIndex === idx ? 'border-color:var(--primary); background:#1e293b;' : ''}">
+    <div class="card-item" style="${myData.jobIndex === idx ? 'border-color:var(--primary); background:#e0e7ff;' : ''}">
       <div>
         <h4>${j.name} ${myData.jobIndex === idx ? '(현재)' : ''}</h4>
         <p class="desc-text">월급: ₩${j.salary.toLocaleString()} / 30초 | 에너지: -${j.workEnergyCost}</p>
@@ -65,28 +92,34 @@ function renderAll() {
 
   const inv = myData.inventory || {};
   document.getElementById('inventory-list').innerHTML = Object.keys(inv).length === 0 ? '<p style="color:gray;">가방이 비었습니다.</p>' :
-    Object.keys(inv).map(id => `<div class="card-item"><span>${id} (${inv[id]}개)</span><button class="btn success" style="width:auto;padding:5px 10px;" onclick="socket.emit('inventory:use','${id}')">사용/판매</button></div>`).join('');
+    Object.keys(inv).map(id => {
+      const koreanName = ITEM_NAMES[id] || id;
+      return `<div class="card-item"><span>${koreanName} (${inv[id]}개)</span><button class="btn success" style="width:auto;padding:5px 10px;" onclick="socket.emit('inventory:use','${id}')">사용/판매</button></div>`;
+    }).join('');
 }
 
-// 3000x3000 대형 맵 + 고퀄리티 렌더러 & 텔레포트 시스템
+// 상단 버튼용 텔레포트 함수
+function teleportTo(x, y) {
+  myPos.x = x;
+  myPos.y = y;
+  socket.emit('player:move', myPos);
+  showToast('🌀 해당 장소로 즉시 이동했습니다!', true);
+}
+
+// ZEP 감성 아바타 및 타일 맵 렌더러
 function startCanvasLoop() {
   const canvas = document.getElementById('world-canvas');
   const ctx = canvas.getContext('2d');
 
-  // 대형 맵 건물 정의
   const buildings = [
-    { x: 500, y: 500, w: 180, h: 120, name: '🏪 24시 편의점', id: 'vending', color: '#1e3a8a' },
-    { x: 2300, y: 500, w: 180, h: 120, name: '🎣 힐링 낚시터', id: 'fishing', color: '#065f46' },
-    { x: 1400, y: 2200, w: 180, h: 120, name: '⚡ 캐릭터 상점', id: 'upgrade', color: '#7c2d12' }
-  ];
-
-  // 텔레포트 게이트 정의 (도착지 좌표 포함)
-  const teleporters = [
-    { x: 1400, y: 1300, r: 35, name: '🌀 중앙 광장 포탈', destX: 1500, destY: 1500 },
-    { x: 580, y: 700, r: 30, name: '🌀 편의점 포탈', destX: 2380, destY: 700 }
+    { x: 500, y: 500, w: 180, h: 120, name: '🏪 24시 편의점', id: 'vending', color: '#3b82f6' },
+    { x: 2300, y: 500, w: 180, h: 120, name: '🎣 힐링 낚시터', id: 'fishing', color: '#10b981' },
+    { x: 1400, y: 2200, w: 180, h: 120, name: '⚡ 캐릭터 상점', id: 'upgrade', color: '#f59e0b' }
   ];
 
   setInterval(() => {
+    if (!document.getElementById('esc-settings-modal').classList.contains('hidden') || !document.getElementById('building-modal').classList.contains('hidden')) return;
+
     let moved = false;
     let speed = 5;
     if (keys['arrowup'] || keys['w']) { myPos.y -= speed; moved = true; }
@@ -94,31 +127,30 @@ function startCanvasLoop() {
     if (keys['arrowleft'] || keys['a']) { myPos.x -= speed; moved = true; }
     if (keys['arrowright'] || keys['d']) { myPos.x += speed; moved = true; }
 
-    // 맵 이탈 방지 (3000x3000)
     myPos.x = Math.max(50, Math.min(2950, myPos.x));
     myPos.y = Math.max(50, Math.min(2950, myPos.y));
 
     if (moved) socket.emit('player:move', myPos);
 
-    // 카메라 추적 (캐릭터 정중앙)
     const camX = canvas.width / 2 - myPos.x;
     const camY = canvas.height / 2 - myPos.y;
 
-    // 배경 채우기
-    ctx.fillStyle = '#0f172a';
+    ctx.fillStyle = '#f0fdf4';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.save();
     ctx.translate(camX, camY);
 
-    // 대형 월드 격자 무늬 및 고퀄 테두리
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(0, 0, 3000, 3000);
-
-    // 잔디/도로 패턴 느낌의 배경 그리드
-    ctx.fillStyle = '#111827';
-    ctx.fillRect(100, 100, 2800, 2800);
+    // 알록달록한 잔디 타일 격자 패턴 그리기
+    const tileSize = 60;
+    for (let x = 0; x < 3000; x += tileSize) {
+      for (let y = 0; y < 3000; y += tileSize) {
+        ctx.fillStyle = (x / tileSize + y / tileSize) % 2 === 0 ? '#dcfce7' : '#bbf7d0';
+        ctx.fillRect(x, y, tileSize, tileSize);
+        ctx.strokeStyle = '#86efac';
+        ctx.strokeRect(x, y, tileSize, tileSize);
+      }
+    }
 
     let foundTarget = null;
 
@@ -126,80 +158,62 @@ function startCanvasLoop() {
     buildings.forEach(b => {
       ctx.fillStyle = b.color;
       ctx.fillRect(b.x, b.y, b.w, b.h);
-      ctx.strokeStyle = '#60a5fa';
-      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
       ctx.strokeRect(b.x, b.y, b.w, b.h);
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 16px sans-serif';
-      ctx.fillText(b.name, b.x + 20, b.y + 65);
+      ctx.fillText(b.name, b.x + 15, b.y + 65);
 
       const dist = Math.hypot(myPos.x - (b.x + b.w / 2), myPos.y - (b.y + b.h / 2));
-      if (dist < 110) {
-        foundTarget = { type: 'building', id: b.id, name: b.name };
-      }
-    });
-
-    // 텔레포트 게이트 렌더링
-    teleporters.forEach(t => {
-      ctx.fillStyle = 'rgba(56, 189, 248, 0.4)';
-      ctx.beginPath();
-      ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-
-      ctx.fillStyle = '#38bdf8';
-      ctx.font = 'bold 12px sans-serif';
-      ctx.fillText(t.name, t.x - 40, t.y - t.r - 8);
-
-      const dist = Math.hypot(myPos.x - t.x, myPos.y - t.y);
-      if (dist < t.r + 20) {
-        foundTarget = { type: 'teleport', destX: t.destX, destY: t.destY, name: t.name };
-      }
+      if (dist < 110) foundTarget = b;
     });
 
     currentActionTarget = foundTarget;
     const popup = document.getElementById('interaction-popup');
     if (currentActionTarget) {
-      popup.textContent = currentActionTarget.type === 'building' ? `⌨️ [E] 키를 눌러 ${currentActionTarget.name} 입장` : `🌀 [E] 키를 눌러 ${currentActionTarget.name} 이용`;
+      popup.textContent = `⌨️ [E] 키를 눌러 ${currentActionTarget.name} 입장`;
       popup.classList.remove('hidden');
     } else {
       popup.classList.add('hidden');
     }
 
-    // 다른 플레이어 렌더링
+    // 다른 플레이어 아바타 그리기
     for (let id in otherPlayers) {
       let p = otherPlayers[id];
-      ctx.fillStyle = '#f43f5e';
-      ctx.beginPath(); ctx.arc(p.x, p.y, 14, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#ffffff'; ctx.font = '12px sans-serif'; ctx.fillText(p.username, p.x - 18, p.y - 22);
+      drawAvatar(ctx, p.x, p.y, p.username, p.avatarColor || '#f43f5e');
     }
 
-    // 내 캐릭터 렌더링 (빛나는 효과)
-    ctx.shadowColor = '#3b82f6';
-    ctx.shadowBlur = 15;
-    ctx.fillStyle = '#3b82f6';
-    ctx.beginPath(); ctx.arc(myPos.x, myPos.y, 16, 0, Math.PI*2); ctx.fill();
-    ctx.shadowBlur = 0; // 초기화
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.fillText(myData.username + ' (나)', myPos.x - 24, myPos.y - 24);
+    // 내 아바타 그리기
+    drawAvatar(ctx, myPos.x, myPos.y, myData.username + ' (나)', '#4f46e5');
 
     ctx.restore();
   }, 1000 / 60);
 }
 
-// 텔레포트 실행 함수
-function executeTeleport(destX, destY) {
-  myPos.x = destX;
-  myPos.y = destY;
-  socket.emit('player:move', myPos);
-  showToast('🌀 텔레포트 성공!', true);
+// ZEP 감성 아바타 그리기 함수
+function drawAvatar(ctx, x, y, name, color) {
+  // 그림자
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath(); ctx.ellipse(x, y + 16, 12, 6, 0, 0, Math.PI * 2); ctx.fill();
+
+  // 몸통
+  ctx.fillStyle = color;
+  ctx.fillRect(x - 10, y - 4, 20, 20);
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(x - 10, y - 4, 20, 20);
+
+  // 머리
+  ctx.fillStyle = '#fde68a';
+  ctx.beginPath(); ctx.arc(x, y - 12, 12, 0, Math.PI * 2); ctx.fill();
+  ctx.stroke();
+
+  // 닉네임 뱃지
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(x - name.length * 3.5 - 6, y - 38, name.length * 7 + 12, 18);
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 11px sans-serif';
+  ctx.fillText(name, x - name.length * 3.5, y - 25);
 }
 
-// 건물 모달 오픈
 function openBuildingModal(id) {
   const modal = document.getElementById('building-modal');
   const title = document.getElementById('modal-title');
@@ -237,10 +251,17 @@ function openBuildingModal(id) {
 
 function closeModal() {
   document.getElementById('building-modal').classList.add('hidden');
-  if (isFishing) {
-    clearTimeout(fishingTimer);
-    isFishing = false;
-  }
+  if (isFishing) { clearTimeout(fishingTimer); isFishing = false; }
+}
+
+function closeEscMenu() {
+  document.getElementById('esc-settings-modal').classList.add('hidden');
+}
+
+function handleLogout() {
+  localStorage.removeItem('tycoon_user');
+  localStorage.removeItem('tycoon_pass');
+  location.reload();
 }
 
 function startFishingProcess() {
@@ -250,7 +271,7 @@ function startFishingProcess() {
 
   isFishing = true;
   btn.disabled = true;
-  btn.style.background = '#374151';
+  btn.style.background = '#cbd5e1';
 
   status.textContent = '⏳ 낚싯대를 던졌습니다... (3초 대기)';
   
@@ -262,7 +283,7 @@ function startFishingProcess() {
       status.textContent = '🎉 물고기가 걸렸습니다! 가방을 확인하세요.';
       isFishing = false;
       btn.disabled = false;
-      btn.style.background = '#3b82f6';
+      btn.style.background = '#4f46e5';
     }, 5000);
 
   }, 3000);
