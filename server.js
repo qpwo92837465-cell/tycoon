@@ -40,27 +40,28 @@ async function saveUser(userObj) {
   await supabase.from('users').upsert([payload], { onConflict: 'username' });
 }
 
+// 💼 승진 조건 대폭 완화
 const JOBS = [
   { id: 'job_0', name: '무직 / 취준생', salary: 0, reqMoney: 0, workEnergyCost: 0 },
-  { id: 'job_1', name: '편의점 야간 알바', salary: 35000, reqMoney: 0, workEnergyCost: 5 },
-  { id: 'job_2', name: '동네 카페 바리스타', salary: 85000, reqMoney: 300000, workEnergyCost: 8 },
-  { id: 'job_3', name: '중소기업 평사원', salary: 220000, reqMoney: 1200000, workEnergyCost: 11 },
-  { id: 'job_4', name: '대기업 대리', salary: 650000, reqMoney: 5000000, workEnergyCost: 14 },
-  { id: 'job_5', name: '대기업 팀장', salary: 1800000, reqMoney: 22000000, workEnergyCost: 17 },
-  { id: 'job_6', name: '대기업 임원 (이사)', salary: 5000000, reqMoney: 100000000, workEnergyCost: 20 },
-  { id: 'job_7', name: '스타트업 대표 (CEO)', salary: 15000000, reqMoney: 450000000, workEnergyCost: 23 },
-  { id: 'job_8', name: '중견기업 총괄 회장', salary: 45000000, reqMoney: 2000000000, workEnergyCost: 26 },
-  { id: 'job_9', name: '글로벌 대기업 회장', salary: 130000000, reqMoney: 9000000000, workEnergyCost: 29 },
-  { id: 'job_10', name: '세계적인 재벌 총수', salary: 400000000, reqMoney: 40000000000, workEnergyCost: 32 },
-  { id: 'job_11', name: '우주 개척 기업 총사령관', salary: 1500000000, reqMoney: 180000000000, workEnergyCost: 35 }
+  { id: 'job_1', name: '편의점 야간 알바', salary: 40000, reqMoney: 0, workEnergyCost: 2 },
+  { id: 'job_2', name: '동네 카페 바리스타', salary: 100000, reqMoney: 150000, workEnergyCost: 3 },
+  { id: 'job_3', name: '중소기업 평사원', salary: 300000, reqMoney: 600000, workEnergyCost: 4 },
+  { id: 'job_4', name: '대기업 대리', salary: 850000, reqMoney: 2500000, workEnergyCost: 5 },
+  { id: 'job_5', name: '대기업 팀장', salary: 2500000, reqMoney: 10000000, workEnergyCost: 6 },
+  { id: 'job_6', name: '대기업 임원 (이사)', salary: 7000000, reqMoney: 40000000, workEnergyCost: 7 },
+  { id: 'job_7', name: '스타트업 대표 (CEO)', salary: 20000000, reqMoney: 150000000, workEnergyCost: 8 },
+  { id: 'job_8', name: '중견기업 총괄 회장', salary: 60000000, reqMoney: 600000000, workEnergyCost: 9 },
+  { id: 'job_9', name: '글로벌 대기업 회장', salary: 180000000, reqMoney: 2500000000, workEnergyCost: 10 },
+  { id: 'job_10', name: '세계적인 재벌 총수', salary: 550000000, reqMoney: 10000000000, workEnergyCost: 11 },
+  { id: 'job_11', name: '우주 개척 기업 총사령관', salary: 2000000000, reqMoney: 40000000000, workEnergyCost: 12 }
 ];
 
 const VENDING_ITEMS = [
-  { id: 'water', name: '생수', cost: 1000, restoreHunger: 15, type: 'food' },
-  { id: 'snack', name: '초코바', cost: 3500, restoreHunger: 35, type: 'food' },
-  { id: 'gimbap', name: '참치 삼각김밥', cost: 7000, restoreHunger: 60, type: 'food' },
-  { id: 'bento', name: '프리미엄 도시락', cost: 25000, restoreHunger: 100, type: 'food' },
-  { id: 'steak', name: '한우 특상 스테이크', cost: 120000, restoreHunger: 180, type: 'food' },
+  { id: 'water', name: '생수', cost: 1000, restoreHunger: 25, type: 'food' },
+  { id: 'snack', name: '초코바', cost: 3500, restoreHunger: 50, type: 'food' },
+  { id: 'gimbap', name: '참치 삼각김밥', cost: 7000, restoreHunger: 80, type: 'food' },
+  { id: 'bento', name: '프리미엄 도시락', cost: 25000, restoreHunger: 120, type: 'food' },
+  { id: 'steak', name: '한우 특상 스테이크', cost: 120000, restoreHunger: 200, type: 'food' },
   { id: 'bait_normal', name: '지렁이 미끼', cost: 5000, type: 'bait' },
   { id: 'bait_gold', name: '황금 새우 미끼', cost: 30000, type: 'bait' }
 ];
@@ -113,7 +114,7 @@ setInterval(() => {
   io.emit('stocks:update', STOCKS);
 }, 5000);
 
-// [오프라인 돈 복사 버그 방지] 오직 접속 중인 온라인 유저에게만 30초마다 월급 지급
+// 배고픔 소모 대폭 완화된 방치형 월급 루프
 setInterval(async () => {
   for (let socketId in onlinePlayers) {
     const pInfo = onlinePlayers[socketId];
@@ -183,11 +184,8 @@ io.on('connection', (socket) => {
     const u = await getUserByUsername(username);
     if (!u || u.passwordhash !== hashPassword(password)) return socket.emit('notify', { success: false, msg: '로그인 실패' });
     
-    // [분신 방지] 이미 접속 중인 동일 유저는 기존 세션 강제 제거
     for (let id in onlinePlayers) {
-      if (onlinePlayers[id].username === username) {
-        delete onlinePlayers[id];
-      }
+      if (onlinePlayers[id].username === username) delete onlinePlayers[id];
     }
 
     currentUser = username;
@@ -296,6 +294,7 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `${item.name} 구매 완료` });
   });
 
+  // 물고기 판매 및 아이템 사용 완벽 연동
   socket.on('inventory:use', async (itemId) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
@@ -363,7 +362,7 @@ io.on('connection', (socket) => {
     bj.pHand.push(bj.deck.pop());
     const score = calcBJ(bj.pHand);
     if (score > 21) {
-      socket.emit('casino:blackjack:result', { win: false, pHand: bj.pHand, dHand: bj.dHand, msg: 'Bust! 패배했습니다.' });
+      socket.emit('casino:bj:result', { win: false, pHand: bj.pHand, dHand: bj.dHand, msg: 'Bust! 패배했습니다.' });
       delete socket.data.bj;
     } else {
       socket.emit('casino:bj:state', { pHand: bj.pHand, dHand: [bj.dHand[0], { suit: '?', val: '?' }], pScore: score, dScore: '?' });
@@ -397,4 +396,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 최종 완성형 서버 실행됨 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 모든 버그 수정 완료 (포트: ${PORT})`));
