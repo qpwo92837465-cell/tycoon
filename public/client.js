@@ -1,13 +1,17 @@
 const socket = io();
 let myData = null, otherPlayers = {}, jobsCache = [], vendingCache = [];
-let myPos = { x: 1000, y: 1000 }; // 넓은 맵 내 시작 위치
-let currentBuilding = null, isFishing = false, fishingTimer = null;
+let myPos = { x: 1500, y: 1500 }; // 넓어진 맵 중앙 시작
+let currentActionTarget = null, isFishing = false, fishingTimer = null;
 const keys = {};
 
 window.addEventListener('keydown', e => {
   keys[e.key.toLowerCase()] = true;
-  if (e.key.toLowerCase() === 'e' && currentBuilding) {
-    openBuildingModal(currentBuilding);
+  if (e.key.toLowerCase() === 'e' && currentActionTarget) {
+    if (currentActionTarget.type === 'building') {
+      openBuildingModal(currentActionTarget.id);
+    } else if (currentActionTarget.type === 'teleport') {
+      executeTeleport(currentActionTarget.destX, currentActionTarget.destY);
+    }
   }
 });
 window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
@@ -64,84 +68,138 @@ function renderAll() {
     Object.keys(inv).map(id => `<div class="card-item"><span>${id} (${inv[id]}개)</span><button class="btn success" style="width:auto;padding:5px 10px;" onclick="socket.emit('inventory:use','${id}')">사용/판매</button></div>`).join('');
 }
 
-// 2D 카메라 팔로우 월드 렌더러
+// 3000x3000 대형 맵 + 고퀄리티 렌더러 & 텔레포트 시스템
 function startCanvasLoop() {
   const canvas = document.getElementById('world-canvas');
   const ctx = canvas.getContext('2d');
 
-  // 대형 월드 건물 배치 정의 (x, y, width, height, name, id)
+  // 대형 맵 건물 정의
   const buildings = [
-    { x: 200, y: 200, w: 140, h: 100, name: '🏪 24시 편의점', id: 'vending' },
-    { x: 1200, y: 200, w: 140, h: 100, name: '🎣 힐링 낚시터', id: 'fishing' },
-    { x: 700, y: 900, w: 140, h: 100, name: '⚡ 캐릭터 상점', id: 'upgrade' }
+    { x: 500, y: 500, w: 180, h: 120, name: '🏪 24시 편의점', id: 'vending', color: '#1e3a8a' },
+    { x: 2300, y: 500, w: 180, h: 120, name: '🎣 힐링 낚시터', id: 'fishing', color: '#065f46' },
+    { x: 1400, y: 2200, w: 180, h: 120, name: '⚡ 캐릭터 상점', id: 'upgrade', color: '#7c2d12' }
+  ];
+
+  // 텔레포트 게이트 정의 (도착지 좌표 포함)
+  const teleporters = [
+    { x: 1400, y: 1300, r: 35, name: '🌀 중앙 광장 포탈', destX: 1500, destY: 1500 },
+    { x: 580, y: 700, r: 30, name: '🌀 편의점 포탈', destX: 2380, destY: 700 }
   ];
 
   setInterval(() => {
     let moved = false;
-    let speed = 4;
+    let speed = 5;
     if (keys['arrowup'] || keys['w']) { myPos.y -= speed; moved = true; }
     if (keys['arrowdown'] || keys['s']) { myPos.y += speed; moved = true; }
     if (keys['arrowleft'] || keys['a']) { myPos.x -= speed; moved = true; }
     if (keys['arrowright'] || keys['d']) { myPos.x += speed; moved = true; }
 
+    // 맵 이탈 방지 (3000x3000)
+    myPos.x = Math.max(50, Math.min(2950, myPos.x));
+    myPos.y = Math.max(50, Math.min(2950, myPos.y));
+
     if (moved) socket.emit('player:move', myPos);
 
-    // 카메라 중심점 계산 (캐릭터를 화면 정중앙에 고정)
+    // 카메라 추적 (캐릭터 정중앙)
     const camX = canvas.width / 2 - myPos.x;
     const camY = canvas.height / 2 - myPos.y;
 
-    ctx.fillStyle = '#111827';
+    // 배경 채우기
+    ctx.fillStyle = '#0f172a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.save();
     ctx.translate(camX, camY);
 
-    // 월드 바닥 그리드 및 테두리 (가상 2000x2000 맵)
-    ctx.strokeStyle = '#1f2937';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(0, 0, 2000, 2000);
+    // 대형 월드 격자 무늬 및 고퀄 테두리
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(0, 0, 3000, 3000);
 
-    // 건물들 렌더링
-    let nearBuilding = null;
+    // 잔디/도로 패턴 느낌의 배경 그리드
+    ctx.fillStyle = '#111827';
+    ctx.fillRect(100, 100, 2800, 2800);
+
+    let foundTarget = null;
+
+    // 건물 렌더링
     buildings.forEach(b => {
-      ctx.fillStyle = '#1f2937';
+      ctx.fillStyle = b.color;
       ctx.fillRect(b.x, b.y, b.w, b.h);
-      ctx.strokeStyle = '#3b82f6';
+      ctx.strokeStyle = '#60a5fa';
+      ctx.lineWidth = 3;
       ctx.strokeRect(b.x, b.y, b.w, b.h);
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.fillText(b.name, b.x + 15, b.y + 55);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 16px sans-serif';
+      ctx.fillText(b.name, b.x + 20, b.y + 65);
 
-      // 플레이어와 건물 간 거리 체크 (충돌 및 인터랙션 반경)
-      const dist = Math.hypot((myPos.x) - (b.x + b.w / 2), (myPos.y) - (b.y + b.h / 2));
-      if (dist < 100) {
-        nearBuilding = b.id;
+      const dist = Math.hypot(myPos.x - (b.x + b.w / 2), myPos.y - (b.y + b.h / 2));
+      if (dist < 110) {
+        foundTarget = { type: 'building', id: b.id, name: b.name };
       }
     });
 
-    currentBuilding = nearBuilding;
-    const popup = document.getElementById('interaction-popup');
-    if (currentBuilding) popup.classList.remove('hidden');
-    else popup.classList.add('hidden');
+    // 텔레포트 게이트 렌더링
+    teleporters.forEach(t => {
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.4)';
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 3;
+      ctx.stroke();
 
-    // 다른 플레이어들 그리기
-    for (let id in otherPlayers) {
-      let p = otherPlayers[id];
-      ctx.fillStyle = '#ef4444';
-      ctx.beginPath(); ctx.arc(p.x, p.y, 14, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.font = '12px sans-serif'; ctx.fillText(p.username, p.x - 15, p.y - 20);
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText(t.name, t.x - 40, t.y - t.r - 8);
+
+      const dist = Math.hypot(myPos.x - t.x, myPos.y - t.y);
+      if (dist < t.r + 20) {
+        foundTarget = { type: 'teleport', destX: t.destX, destY: t.destY, name: t.name };
+      }
+    });
+
+    currentActionTarget = foundTarget;
+    const popup = document.getElementById('interaction-popup');
+    if (currentActionTarget) {
+      popup.textContent = currentActionTarget.type === 'building' ? `⌨️ [E] 키를 눌러 ${currentActionTarget.name} 입장` : `🌀 [E] 키를 눌러 ${currentActionTarget.name} 이용`;
+      popup.classList.remove('hidden');
+    } else {
+      popup.classList.add('hidden');
     }
 
-    // 내 캐릭터 그리기
+    // 다른 플레이어 렌더링
+    for (let id in otherPlayers) {
+      let p = otherPlayers[id];
+      ctx.fillStyle = '#f43f5e';
+      ctx.beginPath(); ctx.arc(p.x, p.y, 14, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#ffffff'; ctx.font = '12px sans-serif'; ctx.fillText(p.username, p.x - 18, p.y - 22);
+    }
+
+    // 내 캐릭터 렌더링 (빛나는 효과)
+    ctx.shadowColor = '#3b82f6';
+    ctx.shadowBlur = 15;
     ctx.fillStyle = '#3b82f6';
     ctx.beginPath(); ctx.arc(myPos.x, myPos.y, 16, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 13px sans-serif'; ctx.fillText(myData.username + ' (나)', myPos.x - 22, myPos.y - 22);
+    ctx.shadowBlur = 0; // 초기화
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText(myData.username + ' (나)', myPos.x - 24, myPos.y - 24);
 
     ctx.restore();
   }, 1000 / 60);
 }
 
-// 건물 모달 창 오픈 로직
+// 텔레포트 실행 함수
+function executeTeleport(destX, destY) {
+  myPos.x = destX;
+  myPos.y = destY;
+  socket.emit('player:move', myPos);
+  showToast('🌀 텔레포트 성공!', true);
+}
+
+// 건물 모달 오픈
 function openBuildingModal(id) {
   const modal = document.getElementById('building-modal');
   const title = document.getElementById('modal-title');
@@ -185,7 +243,6 @@ function closeModal() {
   }
 }
 
-// 낚시 프로세스 (3초 쿨타임 + 5초 대기 연출)
 function startFishingProcess() {
   if (isFishing) return;
   const btn = document.getElementById('btn-fish-action');
@@ -195,14 +252,14 @@ function startFishingProcess() {
   btn.disabled = true;
   btn.style.background = '#374151';
 
-  status.textContent = '⏳ 낚싯대를 정중앙에 던졌습니다... (3초 대기)';
+  status.textContent = '⏳ 낚싯대를 던졌습니다... (3초 대기)';
   
   setTimeout(() => {
-    status.textContent = '🌊 찌가 물 위에 둥둥 떠 있습니다... 입질을 기다리는 중 (5초)';
+    status.textContent = '🌊 찌가 물 위에 둥둥 떠 있습니다... 입질 대기 중 (5초)';
     
     fishingTimer = setTimeout(() => {
       socket.emit('fish:catch');
-      status.textContent = '🎉 물고기가 걸렸습니다! 인벤토리를 확인하세요.';
+      status.textContent = '🎉 물고기가 걸렸습니다! 가방을 확인하세요.';
       isFishing = false;
       btn.disabled = false;
       btn.style.background = '#3b82f6';
