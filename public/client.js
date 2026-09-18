@@ -86,7 +86,7 @@ function renderAll() {
     <div class="card-item" style="${myData.jobIndex === idx ? 'border-color:var(--primary); background:#e0e7ff;' : ''}">
       <div>
         <h4>${j.name} ${myData.jobIndex === idx ? '(현재)' : ''}</h4>
-        <p class="desc-text">월급: ₩${j.salary.toLocaleString()} / 30초 | 에너지: -${j.workEnergyCost}</p>
+        <p class="desc-text" style="font-size:13px; color:#334155;">월급: ₩${j.salary.toLocaleString()} / 30초 | 에너지: -${j.workEnergyCost}</p>
       </div>
       <div style="font-size:12px; text-align:right;">승진조건<br><strong>₩${j.reqMoney.toLocaleString()}</strong></div>
     </div>`).join('');
@@ -95,7 +95,7 @@ function renderAll() {
   document.getElementById('inventory-list').innerHTML = Object.keys(inv).length === 0 ? '<p style="color:gray;">가방이 비었습니다.</p>' :
     Object.keys(inv).map(id => {
       const koreanName = ITEM_NAMES[id] || id;
-      return `<div class="card-item"><span>${koreanName} (${inv[id]}개)</span><button class="btn success" style="width:auto;padding:5px 10px;" onclick="socket.emit('inventory:use','${id}')">사용/판매</button></div>`;
+      return `<div class="card-item"><span>${koreanName} (${inv[id]}개)</span><button class="btn success" style="width:auto;padding:6px 12px;" onclick="socket.emit('inventory:use','${id}')">사용/판매</button></div>`;
     }).join('');
 }
 
@@ -197,10 +197,10 @@ function drawAvatar(ctx, x, y, name, color) {
   ctx.beginPath(); ctx.arc(x, y - 12, 12, 0, Math.PI * 2); ctx.fill();
   ctx.stroke();
 
-  ctx.fillStyle = 'rgba(0,0,0,0.7)';
-  ctx.fillRect(x - name.length * 3.5 - 6, y - 38, name.length * 7 + 12, 18);
-  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 11px sans-serif';
-  ctx.fillText(name, x - name.length * 3.5, y - 25);
+  ctx.fillStyle = 'rgba(0,0,0,0.85)';
+  ctx.fillRect(x - name.length * 4 - 6, y - 40, name.length * 8 + 12, 20);
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 12px sans-serif';
+  ctx.fillText(name, x - name.length * 4, y - 26);
 }
 
 function openBuildingModal(id) {
@@ -214,7 +214,7 @@ function openBuildingModal(id) {
     body.innerHTML = vendingCache.map(i => `
       <div class="card-item">
         <span>${i.name} (₩${i.cost.toLocaleString()})</span>
-        <button class="btn primary" style="width:auto;padding:6px 12px;" onclick="socket.emit('vending:buy','${i.id}')">구매</button>
+        <button class="btn primary" style="width:auto;padding:8px 16px;" onclick="socket.emit('vending:buy','${i.id}')">구매</button>
       </div>`).join('');
   } else if (id === 'upgrade') {
     title.textContent = '⚡ 캐릭터 강화 상점';
@@ -223,42 +223,83 @@ function openBuildingModal(id) {
     body.innerHTML = `
       <div class="card-item">
         <div><h4>🎣 낚싯대 강화 (현재 Lv.${up.fishingRod})</h4><p class="desc-text">비용: ₩${(up.fishingRod * 150000).toLocaleString()}</p></div>
-        <button class="btn success" style="width:auto;padding:8px;" onclick="socket.emit('upgrade:buy','fishingRod')">강화</button>
+        <button class="btn success" style="width:auto;padding:10px;" onclick="socket.emit('upgrade:buy','fishingRod')">강화</button>
       </div>
       <div class="card-item">
         <div><h4>🍖 위장 강화 (현재 최대 포만감: ${maxH})</h4><p class="desc-text">비용: ₩${(up.stomach * 250000).toLocaleString()}</p></div>
-        <button class="btn success" style="width:auto;padding:8px;" onclick="socket.emit('upgrade:buy','stomach')">강화</button>
+        <button class="btn success" style="width:auto;padding:10px;" onclick="socket.emit('upgrade:buy','stomach')">강화</button>
       </div>`;
   } else if (id === 'fishing') {
     title.textContent = '🎣 힐링 낚시터';
     body.innerHTML = `
-      <p>미끼를 장착하고 대어를 낚아보세요!</p>
+      <p style="font-weight:bold;">미끼를 장착하고 대어를 낚아보세요!</p>
       <button class="btn primary huge" id="btn-fish-action" style="margin-top:15px;padding:15px;" onclick="startFishingProcess()">🎣 낚싯대 던지기 (3초 쿨타임)</button>
-      <div id="fishing-status-text" style="margin-top:10px;text-align:center;color:#f59e0b;font-weight:bold;"></div>`;
+      <div id="fishing-status-text" style="margin-top:12px;text-align:center;color:#b45309;font-weight:bold;font-size:16px;"></div>`;
   } else if (id === 'stock') {
     title.textContent = '📈 주식시장';
     body.innerHTML = stocksCache.map(s => `
       <div class="card-item">
         <div><h4>${s.name} (${s.symbol})</h4><p class="text-green">₩${s.price.toLocaleString()} | 보유: ${(myData.stocks && myData.stocks[s.symbol]) || 0}주</p></div>
-        <div style="display:flex;gap:5px;">
-          <button class="btn primary" style="width:auto;padding:6px;" onclick="const amt=prompt('매수 수량:','1');if(amt)socket.emit('stock:buy',{symbol:'${s.symbol}',amount:parseInt(amt)})">매수</button>
-          <button class="btn secondary" style="width:auto;padding:6px;" onclick="const amt=prompt('매도 수량:','1');if(amt)socket.emit('stock:sell',{symbol:'${s.symbol}',amount:parseInt(amt)})">매도</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn primary" style="width:auto;padding:8px 12px;" onclick="const amt=prompt('매수 수량:','1');if(amt)socket.emit('stock:buy',{symbol:'${s.symbol}',amount:parseInt(amt)})">매수</button>
+          <button class="btn secondary" style="width:auto;padding:8px 12px;" onclick="const amt=prompt('매도 수량:','1');if(amt)socket.emit('stock:sell',{symbol:'${s.symbol}',amount:parseInt(amt)})">매도</button>
         </div>
       </div>`).join('');
   } else if (id === 'casino') {
-    title.textContent = '🎰 VIP 블랙잭 카지노';
+    title.textContent = '🎰 VIP 종합 카지노';
     body.innerHTML = `
-      <p>실시간 딜러와의 사투! 블랙잭으로 자산을 불려보세요.</p>
+      <div style="display:flex; gap:8px; margin-bottom:15px;">
+        <button class="btn primary" onclick="switchCasinoGame('blackjack')">♠️ 블랙잭 (21자동스탠드)</button>
+        <button class="btn warning" onclick="switchCasinoGame('bacc')">🎲 바카라</button>
+        <button class="btn success" onclick="switchCasinoGame('hl')">⬆️ 하이로우</button>
+        <button class="btn secondary" onclick="switchCasinoGame('slot')">🎰 슬롯머신</button>
+      </div>
+      <div id="casino-game-view"></div>`;
+    switchCasinoGame('blackjack');
+  }
+}
+
+// 카지노 탭 전환
+function switchCasinoGame(game) {
+  const view = document.getElementById('casino-game-view');
+  if (game === 'blackjack') {
+    view.innerHTML = `
+      <h3>♠️ 블랙잭 (21 달성 시 자동 스탠드)</h3>
       <div class="input-group" style="margin-top:10px;"><input type="number" id="bj-bet-input" value="10000" placeholder="배팅금"></div>
-      <button class="btn warning" onclick="startBJGame()">블랙잭 시작</button>
-      <div id="bj-live-table" class="hidden" style="margin-top:15px;background:#111827;padding:15px;border-radius:8px;">
+      <button class="btn warning" onclick="startBJGame()">게임 시작</button>
+      <div id="bj-live-table" class="hidden" style="margin-top:15px;background:#0f172a;color:#fff;padding:15px;border-radius:8px;font-size:15px;">
         <p>딜러 패: <span id="bj-d-cards"></span> (<span id="bj-d-score">?</span>)</p>
         <p style="margin-top:8px;">내 패: <span id="bj-p-cards"></span> (<span id="bj-p-score">0</span>)</p>
-        <div style="display:flex; gap:5px; margin-top:12px;">
-          <button class="btn success" onclick="socket.emit('casino:blackjack:hit')">Hit</button>
-          <button class="btn warning" onclick="socket.emit('casino:blackjack:stand')">Stand</button>
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <button class="btn success" onclick="socket.emit('casino:blackjack:hit')">Hit (카드 받기)</button>
+          <button class="btn warning" onclick="socket.emit('casino:blackjack:stand')">Stand (멈춤)</button>
         </div>
       </div>`;
+  } else if (game === 'bacc') {
+    view.innerHTML = `
+      <h3>🎲 바카라 (Player vs Banker)</h3>
+      <div class="input-group" style="margin-top:10px;"><input type="number" id="bacc-bet-input" value="10000" placeholder="배팅금"></div>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button class="btn primary" onclick="playBacc('PLAYER')">Player 배팅 (2배)</button>
+        <button class="btn warning" onclick="playBacc('BANKER')">Banker 배팅 (2배)</button>
+        <button class="btn success" onclick="playBacc('TIE')">Tie 무승부 (9배)</button>
+      </div>
+      <div id="bacc-result" style="margin-top:15px;font-weight:bold;font-size:16px;"></div>`;
+  } else if (game === 'hl') {
+    view.innerHTML = `
+      <h3>⬆️ 하이로우 예측</h3>
+      <div class="input-group" style="margin-top:10px;"><input type="number" id="hl-bet-input" value="10000" placeholder="배팅금"></div>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button class="btn primary" onclick="playHL('HIGH')">📈 High (더 높을 것)</button>
+        <button class="btn warning" onclick="playHL('LOW')">📉 Low (더 낮을 것)</button>
+      </div>
+      <div id="hl-result" style="margin-top:15px;font-weight:bold;font-size:16px;"></div>`;
+  } else if (game === 'slot') {
+    view.innerHTML = `
+      <h3>🎰 슬롯머신</h3>
+      <div class="input-group" style="margin-top:10px;"><input type="number" id="slot-bet-input" value="10000" placeholder="배팅금"></div>
+      <button class="btn success" style="margin-top:10px;" onclick="playSlot()">🎰 슬롯 돌리기</button>
+      <div id="slot-result" style="margin-top:15px;font-size:28px;text-align:center;font-weight:bold;background:#1e293b;padding:15px;border-radius:8px;color:#facc15;">🍒 | 🍋 | 🍊</div>`;
   }
 }
 
@@ -281,6 +322,32 @@ socket.on('casino:bj:result', res => {
   document.getElementById('bj-d-cards').textContent = res.dHand.map(c=>c.suit+c.val).join(' ');
   document.getElementById('bj-p-score').textContent = calcScore(res.pHand);
   document.getElementById('bj-d-score').textContent = calcScore(res.dHand);
+});
+
+function playBacc(choice) {
+  const bet = parseInt(document.getElementById('bacc-bet-input').value, 10);
+  socket.emit('casino:bacc:play', { bet, choice });
+}
+socket.on('casino:bacc:result', res => {
+  document.getElementById('bacc-result').textContent = `결과: 플레이어(${res.pCard}) vs 뱅커(${res.bCard}) 👉 승자: ${res.winner}`;
+});
+
+function playHL(choice) {
+  const bet = parseInt(document.getElementById('hl-bet-input').value, 10);
+  socket.emit('casino:hl:play', { bet, choice });
+}
+socket.on('casino:hl:result', res => {
+  document.getElementById('hl-result').textContent = `기준 카드: ${res.base} | 다음 카드: ${res.next} 👉 ${res.win ? '성공!' : '실패...'}`;
+});
+
+function playSlot() {
+  const bet = parseInt(document.getElementById('slot-bet-input').value, 10);
+  socket.emit('casino:slot:play', { bet });
+}
+socket.on('casino:slot:result', res => {
+  document.getElementById('slot-result').textContent = `${res.r1} | ${res.r2} | ${res.r3}`;
+  if (res.reward > 0) showToast(`슬롯머신 당첨! ₩${res.reward.toLocaleString()} 획득!`, true);
+  else showToast(`꽝! 다음 기회에...`, false);
 });
 
 function calcScore(hand) {
