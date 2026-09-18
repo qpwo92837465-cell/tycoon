@@ -33,65 +33,43 @@
     </header>
 
     <div class="game-layout">
+      <!-- 2D 카메라 팔로우 캔버스 월드 -->
       <div class="canvas-container">
-        <canvas id="world-canvas" width="800" height="500"></canvas>
-        <div class="controls-guide">🕹️ 이동: 방향키/WASD | 편의점, 낚시터, 카지노 구역으로 이동하세요!</div>
+        <canvas id="world-canvas" width="900" height="600"></canvas>
+        <div id="interaction-popup" class="hidden">⌨️ **[E]** 키를 눌러 상호작용하기</div>
+        <div class="controls-guide">🕹️ 이동: 방향키/WASD | 건물 근처로 가서 E키를 누르세요!</div>
       </div>
 
+      <!-- 우측 상시 패널 (인벤토리 및 직업) -->
       <div class="side-panel">
         <nav class="tab-nav">
           <button class="tab-btn active" data-tab="tab-job">💼 직업</button>
           <button class="tab-btn" data-tab="tab-inventory">🎒 가방</button>
-          <button class="tab-btn" data-tab="tab-vending">🏪 편의점</button>
-          <button class="tab-btn" data-tab="tab-upgrade">⚡ 업그레이드</button>
-          <button class="tab-btn" data-tab="tab-fishing">🎣 낚시터</button>
-          <button class="tab-btn hidden" id="tab-btn-admin" data-tab="tab-admin">👑 어드민</button>
         </nav>
-
         <div class="panel-content">
           <div id="tab-job" class="tab-panel active">
             <h3>💼 커리어 및 승진</h3>
-            <button class="btn huge primary" style="margin-bottom:15px;" onclick="socket.emit('action:promote')">⬆️ 다음 직급 승진 신청</button>
+            <button class="btn huge primary" style="margin-bottom:15px;" onclick="socket.emit('action:promote')">⬆️ 다음 직급 승진</button>
             <div id="job-list" class="sub-list"></div>
           </div>
           <div id="tab-inventory" class="tab-panel">
             <h3>내 인벤토리</h3>
             <div id="inventory-list" class="sub-list"></div>
           </div>
-          <div id="tab-vending" class="tab-panel">
-            <h3>편의점 자판기</h3>
-            <div id="vending-list" class="sub-list"></div>
-          </div>
-          <div id="tab-upgrade" class="tab-panel">
-            <h3>⚡ 캐릭터 업그레이드</h3>
-            <div class="sub-list">
-              <div class="card-item">
-                <div><h4>🎣 낚싯대 강화</h4><p class="desc-text" id="rod-info">현재 Lv.1</p></div>
-                <button class="btn success" style="width:auto;padding:8px;" onclick="socket.emit('upgrade:buy','fishingRod')">강화하기</button>
-              </div>
-              <div class="card-item">
-                <div><h4>🍖 위장 강화 (최대 포만감 1000)</h4><p class="desc-text" id="stomach-info">현재 Lv.1</p></div>
-                <button class="btn success" style="width:auto;padding:8px;" onclick="socket.emit('upgrade:buy','stomach')">강화하기</button>
-              </div>
-            </div>
-          </div>
-          <div id="tab-fishing" class="tab-panel">
-            <h3>힐링 낚시터</h3>
-            <p class="desc-text">낚시를 통해 고급 어종을 건져올려 판매하세요!</p>
-            <button class="btn primary huge" onclick="socket.emit('fish:catch')">🎣 낚싯대 던지기</button>
-          </div>
-          <div id="tab-admin" class="tab-panel">
-            <h3>👑 관리자 패널</h3>
-            <div class="input-group"><input type="text" id="admin-target" placeholder="대상 유저 닉네임"></div>
-            <div style="display:flex; gap:5px; margin-bottom:5px;">
-              <button class="btn warning" onclick="execAdmin('money', prompt('지급 금액:'))">돈 지급</button>
-              <button class="btn success" onclick="execAdmin('hunger', '100')">포만감 완충</button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
   </div>
+
+  <!-- 건물별 팝업 모달 창들 -->
+  <div id="building-modal" class="modal-backdrop hidden">
+    <div class="modal-box large">
+      <h2 id="modal-title">건물 이름</h2>
+      <div id="modal-body" class="modal-body-content">내용</div>
+      <button class="btn secondary" style="margin-top:15px;" onclick="closeModal()">닫기 (ESC)</button>
+    </div>
+  </div>
+
   <div id="toast-box" class="toast-container"></div>
   <script src="client.js"></script>
 </body>
