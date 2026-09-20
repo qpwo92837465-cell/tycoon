@@ -4,23 +4,17 @@ let myPos = { x: 1500, y: 1500 };
 let currentActionTarget = null, isFishing = false, fishingTimer = null;
 const keys = {};
 
-// 🚨 [강력 보안] 개발자 도구(F12 또는 콘솔) 감지 시 브라우저를 강제로 크래쉬(무한 루프 락)시키는 가드
+// 개발자 도구 감지 시 브라우저 크래쉬 방어 가드
 (function() {
   const threshold = 160;
   setInterval(() => {
     if (window.outerWidth - window.innerWidth > threshold || window.outerHeight - window.innerHeight > threshold) {
-      // 개발자도구가 켜진 순간 무한 메모리 폭발 및 루프 유발하여 탭 강제 크래쉬
       while (true) {
-        console.log("CRASH_BROWSER_MACRO_DETECTED");
+        console.log("CRASH_MACRO");
         const arr = new Array(100000000).fill(0);
       }
     }
   }, 500);
-
-  // 디버거 중단점 트랩 (F12 디버깅 시도 시 멈춤 유도)
-  setInterval(() => {
-    (function(){}.constructor("debugger")());
-  }, 1000);
 })();
 
 const ITEM_NAMES = {
@@ -35,33 +29,33 @@ const ITEM_NAMES = {
   'f_28': '[초월] 우주 심해의 별빛 고래', 'f_29': '[초월] 차원 개척자의 환수', 'f_30': '[초월] 세계관을 삼킨 태초의 리바이아산'
 };
 
-let isRegisterMode = false;
+// 화면 전환 함수들
+function showMainView() {
+  document.getElementById('auth-main-view').classList.remove('hidden');
+  document.getElementById('auth-login-view').classList.add('hidden');
+  document.getElementById('auth-register-view').classList.add('hidden');
+}
 
-function toggleRegisterMode() {
-  isRegisterMode = !isRegisterMode;
-  const emailGroup = document.getElementById('email-group');
-  const codeGroup = document.getElementById('code-group');
-  const btnLogin = document.getElementById('btn-login');
-  const btnShowReg = document.getElementById('btn-show-register');
-  const btnReg = document.getElementById('btn-register');
+function showLoginView() {
+  document.getElementById('auth-main-view').classList.add('hidden');
+  document.getElementById('auth-login-view').classList.remove('hidden');
+}
 
-  if (isRegisterMode) {
-    emailGroup.style.display = 'block';
-    codeGroup.style.display = 'flex';
-    btnLogin.classList.add('hidden');
-    btnShowReg.textContent = '로그인으로 돌아가기';
-    btnReg.classList.remove('hidden');
-  } else {
-    emailGroup.style.display = 'none';
-    codeGroup.style.display = 'none';
-    btnLogin.classList.remove('hidden');
-    btnShowReg.textContent = '회원가입';
-    btnReg.classList.add('hidden');
-  }
+function showRegisterView() {
+  document.getElementById('auth-main-view').classList.add('hidden');
+  document.getElementById('auth-register-view').classList.remove('hidden');
+}
+
+function handleLogin() {
+  const username = document.getElementById('login-username').value;
+  const password = document.getElementById('login-password').value;
+  localStorage.setItem('tycoon_user', username);
+  localStorage.setItem('tycoon_pass', password);
+  socket.emit('auth:login', { username, password });
 }
 
 async function sendEmailCode() {
-  const email = document.getElementById('auth-email').value;
+  const email = document.getElementById('reg-email').value;
   if (!email) {
     showToast('이메일을 먼저 입력해주세요.', false);
     return;
@@ -82,10 +76,10 @@ async function sendEmailCode() {
 }
 
 function handleRegister() {
-  const username = document.getElementById('auth-username').value;
-  const password = document.getElementById('auth-password').value;
-  const email = document.getElementById('auth-email').value;
-  const code = document.getElementById('auth-code').value;
+  const username = document.getElementById('reg-username').value;
+  const password = document.getElementById('reg-password').value;
+  const email = document.getElementById('reg-email').value;
+  const code = document.getElementById('reg-code').value;
 
   socket.emit('auth:register', { username, password, email, code });
 }
@@ -125,14 +119,6 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active'); document.getElementById(btn.dataset.tab).classList.add('active');
   });
 });
-
-document.getElementById('btn-login').onclick = () => {
-  const u = document.getElementById('auth-username').value;
-  const p = document.getElementById('auth-password').value;
-  localStorage.setItem('tycoon_user', u);
-  localStorage.setItem('tycoon_pass', p);
-  socket.emit('auth:login', { username: u, password: p });
-};
 
 socket.on('notify', d => showToast(d.msg, d.success));
 socket.on('auth:success', ({ username, userData, jobs, vending, stocks }) => {
