@@ -2,7 +2,6 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = 'https://rczxhjndnrsjzihmzbqr.supabase.co';
@@ -15,10 +14,6 @@ const server = http.createServer(app);
 const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 
-function hashPassword(pw) {
-  return crypto.createHash('sha256').update(pw).digest('hex');
-}
-
 async function getUserByUsername(username) {
   const { data } = await supabase.from('users').select('*').eq('username', username).maybeSingle();
   return data;
@@ -27,7 +22,7 @@ async function getUserByUsername(username) {
 async function saveUser(userObj) {
   const payload = {
     username: userObj.username,
-    passwordhash: userObj.passwordHash || userObj.passwordhash,
+    passwordhash: userObj.password || userObj.passwordhash || userObj.passwordHash,
     money: userObj.money,
     jobindex: userObj.jobIndex !== undefined ? userObj.jobIndex : userObj.jobindex,
     hunger: userObj.hunger,
@@ -113,6 +108,7 @@ setInterval(() => {
   io.emit('stocks:update', STOCKS);
 }, 5000);
 
+// [변경] 월급 지급 주기를 1분 30초 (90,000ms)로 연장
 setInterval(async () => {
   for (let socketId in onlinePlayers) {
     const pInfo = onlinePlayers[socketId];
@@ -134,7 +130,7 @@ setInterval(async () => {
       });
     }
   }
-}, 30000);
+}, 90000);
 
 app.use(express.static(path.join(__dirname, 'public')));
 const onlinePlayers = {};
@@ -174,13 +170,13 @@ io.on('connection', (socket) => {
   socket.on('auth:register', async ({ username, password }) => {
     if (!username || username.trim().length < 2) return socket.emit('notify', { success: false, msg: '아이디는 2자 이상 입력해주세요.' });
     if (await getUserByUsername(username)) return socket.emit('notify', { success: false, msg: '이미 존재하는 아이디입니다.' });
-    await saveUser({ username, passwordHash: hashPassword(password), money: 200000, jobIndex: 0, hunger: 100, maxHunger: 100, isAdmin: false, inventory: {}, stocks: {}, upgrades: { fishingRod: 1, stomach: 1 } });
+    await saveUser({ username, password, money: 200000, jobIndex: 0, hunger: 100, maxHunger: 100, isAdmin: false, inventory: {}, stocks: {}, upgrades: { fishingRod: 1, stomach: 1 } });
     socket.emit('notify', { success: true, msg: '가입 완료! 로그인하세요.' });
   });
 
   socket.on('auth:login', async ({ username, password }) => {
     const u = await getUserByUsername(username);
-    if (!u || u.passwordhash !== hashPassword(password)) return socket.emit('notify', { success: false, msg: '로그인 실패' });
+    if (!u || u.passwordhash !== password) return socket.emit('notify', { success: false, msg: '로그인 실패' });
     
     for (let id in onlinePlayers) {
       if (onlinePlayers[id].username === username) delete onlinePlayers[id];
@@ -339,7 +335,6 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `${stock.name} ${amount}주 매도 완료` });
   });
 
-  // ♠️ 블랙잭 (21 도달 시 자동 스탠드 기능 포함)
   socket.on('casino:blackjack:start', async ({ bet }) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
@@ -354,7 +349,6 @@ io.on('connection', (socket) => {
     socket.data.bj = { bet, deck, pHand, dHand };
 
     if (pScore === 21) {
-      // 시작하자마자 21이면 자동 스탠드 처리
       let dScore = calcBJ(dHand);
       let reward = bet * 2.5;
       u.money += reward; await saveUser(u); await syncUser();
@@ -373,12 +367,10 @@ io.on('connection', (socket) => {
     const score = calcBJ(bj.pHand);
 
     if (score > 21) {
-      socket.emit('casino:bj:result', { win: false, pHand: bj.pHand, dHand: bj.dHand, pScore: score, dScore: calcBJ(bj.dHand), msg: 'Bust! 패배했습니다.' });
+      socket.emit('casino:blackjack:result', { win: false, pHand: bj.pHand, dHand: bj.dHand, pScore: score, dScore: calcBJ(bj.dHand), msg: 'Bust! 패배했습니다.' });
       delete socket.data.bj;
     } else if (score === 21) {
-      // 21이 되면 자동으로 Stand 실행!
       socket.emit('notify', { success: true, msg: '21 달성! 자동으로 스탠드합니다.' });
-      // 자동 스탠드 로직 태우기
       const u = await getUserByUsername(currentUser);
       let dScore = calcBJ(bj.dHand);
       while (dScore < 17) {
@@ -418,7 +410,6 @@ io.on('connection', (socket) => {
     delete socket.data.bj;
   });
 
-  // 🎲 바카라 (Player / Banker / Tie)
   socket.on('casino:bacc:play', async ({ bet, choice }) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
@@ -441,7 +432,6 @@ io.on('connection', (socket) => {
     socket.emit('casino:bacc:result', { pCard, bCard, winner, reward });
   });
 
-  // ⬆️ 하이로우 (High / Low 예측)
   socket.on('casino:hl:play', async ({ bet, choice }) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
@@ -458,7 +448,6 @@ io.on('connection', (socket) => {
     socket.emit('casino:hl:result', { base, next, win, reward });
   });
 
-  // 🎰 슬롯머신 (3개 맞추기)
   socket.on('casino:slot:play', async ({ bet }) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
@@ -491,4 +480,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 카지노 풀버전(블랙잭 21자동스탠드/바카라/하이로우/슬롯) 실행됨 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 1분 30초 주기 월급 지급 버전 실행됨 (포트: ${PORT})`));
