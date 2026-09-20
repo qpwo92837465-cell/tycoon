@@ -15,12 +15,12 @@ const server = http.createServer(app);
 const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 
-// 이메일 발송 설정 (지메일 앱 비밀번호 등 입력)
+// 이메일 발송 설정 (앱 비밀번호 적용)
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: 'your_email@gmail.com', // 👈 관리자 이메일
-    pass: 'your_app_password'     // 👈 구글 앱 비밀번호
+    user: 'your_email@gmail.com', // 👈 본인 지메일 주소 입력
+    pass: 'qkgu kwiz elju uxnh'     // 👈 발급받으신 16자리 앱 비밀번호
   }
 });
 
@@ -191,7 +191,6 @@ function calcBJ(hand) {
   return sum;
 }
 
-// 이메일 인증 번호 발송 API (중복 검사 포함)
 app.post('/api/send-code', async (req, res) => {
   const { email } = req.body;
   if (!email || !email.includes('@')) {
@@ -235,7 +234,6 @@ io.on('connection', (socket) => {
     }
   }
 
-  // 회원가입 전용 (이메일 인증 체크 포함)
   socket.on('auth:register', async ({ username, password, email, code }) => {
     if (!username || username.trim().length < 2) return socket.emit('notify', { success: false, msg: '아이디는 2자 이상 입력해주세요.' });
     if (!password || password.trim().length < 2) return socket.emit('notify', { success: false, msg: '비밀번호를 입력해주세요.' });
@@ -432,4 +430,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 로그인/회원가입 페이지 분리 및 이메일 인증 적용 완료 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 구글 앱 비밀번호 연동 서버 실행됨 (포트: ${PORT})`));
