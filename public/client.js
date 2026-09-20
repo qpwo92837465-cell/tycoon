@@ -70,9 +70,23 @@ socket.on('auth:success', ({ username, userData, jobs, vending, stocks }) => {
   startCanvasLoop();
 });
 
-socket.on('player:sync', data => { myData = data; renderAll(); });
+socket.on('player:sync', data => { 
+  myData = data; 
+  renderAll(); 
+  // 상점이 열려있다면 편의점 인벤토리 개수 갱신을 위해 다시 렌더
+  const buildModal = document.getElementById('building-modal');
+  if (!buildModal.classList.contains('hidden') && document.getElementById('modal-title').textContent.includes('편의점')) {
+    openBuildingModal('vending');
+  }
+});
 socket.on('players:update', players => { otherPlayers = players; });
-socket.on('stocks:update', stocks => { stocksCache = stocks; });
+socket.on('stocks:update', stocks => { 
+  stocksCache = stocks; 
+  const stockModal = document.getElementById('building-modal');
+  if (!stockModal.classList.contains('hidden') && document.getElementById('modal-title').textContent.includes('주식시장')) {
+    updateStockModalContent();
+  }
+});
 
 function renderAll() {
   const maxH = myData.maxHunger || 100;
@@ -86,7 +100,7 @@ function renderAll() {
     <div class="card-item" style="${myData.jobIndex === idx ? 'border-color:var(--primary); background:#e0e7ff;' : ''}">
       <div>
         <h4>${j.name} ${myData.jobIndex === idx ? '(현재)' : ''}</h4>
-        <p class="desc-text" style="font-size:13px; color:#334155;">월급: ₩${j.salary.toLocaleString()} / 30초 | 에너지: -${j.workEnergyCost}</p>
+        <p class="desc-text" style="font-size:13px; color:#334155;">월급: ₩${j.salary.toLocaleString()} / 1분30초 | 에너지: -${j.workEnergyCost}</p>
       </div>
       <div style="font-size:12px; text-align:right;">승진조건<br><strong>₩${j.reqMoney.toLocaleString()}</strong></div>
     </div>`).join('');
@@ -210,11 +224,17 @@ function openBuildingModal(id) {
   modal.classList.remove('hidden');
 
   if (id === 'vending') {
-    title.textContent = '🏪 24시 편의점 & 미끼 상점';
+    title.textContent = '🏪 24시 편의점 & 미끼 상점 (1개 / 10개 구매)';
     body.innerHTML = vendingCache.map(i => `
       <div class="card-item">
-        <span>${i.name} (₩${i.cost.toLocaleString()})</span>
-        <button class="btn primary" style="width:auto;padding:8px 16px;" onclick="socket.emit('vending:buy','${i.id}')">구매</button>
+        <div>
+          <h4>${i.name}</h4>
+          <p style="font-size:13px; color:#047857;">가격: ₩${i.cost.toLocaleString()}</p>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn primary" style="width:auto;padding:8px 10px;" onclick="socket.emit('vending:buy',{itemId:'${i.id}', count:1})">1개 구매</button>
+          <button class="btn warning" style="width:auto;padding:8px 10px;" onclick="socket.emit('vending:buy',{itemId:'${i.id}', count:10})">10개 구매</button>
+        </div>
       </div>`).join('');
   } else if (id === 'upgrade') {
     title.textContent = '⚡ 캐릭터 강화 상점';
@@ -231,25 +251,30 @@ function openBuildingModal(id) {
       </div>`;
   } else if (id === 'fishing') {
     title.textContent = '🎣 힐링 낚시터';
+    const inv = myData.inventory || {};
+    const normalCount = inv['bait_normal'] || 0;
+    const goldCount = inv['bait_gold'] || 0;
+
     body.innerHTML = `
-      <p style="font-weight:bold;">미끼를 장착하고 대어를 낚아보세요!</p>
-      <button class="btn primary huge" id="btn-fish-action" style="margin-top:15px;padding:15px;" onclick="startFishingProcess()">🎣 낚싯대 던지기 (3초 쿨타임)</button>
+      <p style="font-weight:bold;">사용할 미끼를 선택하고 낚싯대를 던지세요!</p>
+      <div class="input-group" style="margin-top:10px;">
+        <label style="font-size:14px; font-weight:bold;">미끼 선택:</label>
+        <select id="fishing-bait-select">
+          <option value="none">맨손 (미끼 없음)</option>
+          <option value="bait_normal">지렁이 미끼 (${normalCount}개 보유)</option>
+          <option value="bait_gold">황금 새우 미끼 (${goldCount}개 보유)</option>
+        </select>
+      </div>
+      <button class="btn primary huge" id="btn-fish-action" style="margin-top:10px;padding:15px;" onclick="startFishingProcess()">🎣 낚싯대 던지기 (3초 쿨타임)</button>
       <div id="fishing-status-text" style="margin-top:12px;text-align:center;color:#b45309;font-weight:bold;font-size:16px;"></div>`;
   } else if (id === 'stock') {
-    title.textContent = '📈 주식시장';
-    body.innerHTML = stocksCache.map(s => `
-      <div class="card-item">
-        <div><h4>${s.name} (${s.symbol})</h4><p class="text-green">₩${s.price.toLocaleString()} | 보유: ${(myData.stocks && myData.stocks[s.symbol]) || 0}주</p></div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn primary" style="width:auto;padding:8px 12px;" onclick="const amt=prompt('매수 수량:','1');if(amt)socket.emit('stock:buy',{symbol:'${s.symbol}',amount:parseInt(amt)})">매수</button>
-          <button class="btn secondary" style="width:auto;padding:8px 12px;" onclick="const amt=prompt('매도 수량:','1');if(amt)socket.emit('stock:sell',{symbol:'${s.symbol}',amount:parseInt(amt)})">매도</button>
-        </div>
-      </div>`).join('');
+    title.textContent = '📈 실시간 주식시장';
+    updateStockModalContent();
   } else if (id === 'casino') {
     title.textContent = '🎰 VIP 종합 카지노';
     body.innerHTML = `
       <div style="display:flex; gap:8px; margin-bottom:15px;">
-        <button class="btn primary" onclick="switchCasinoGame('blackjack')">♠️ 블랙잭 (21자동스탠드)</button>
+        <button class="btn primary" onclick="switchCasinoGame('blackjack')">♠️ 블랙잭</button>
         <button class="btn warning" onclick="switchCasinoGame('bacc')">🎲 바카라</button>
         <button class="btn success" onclick="switchCasinoGame('hl')">⬆️ 하이로우</button>
         <button class="btn secondary" onclick="switchCasinoGame('slot')">🎰 슬롯머신</button>
@@ -259,7 +284,19 @@ function openBuildingModal(id) {
   }
 }
 
-// 카지노 탭 전환
+function updateStockModalContent() {
+  const body = document.getElementById('modal-body');
+  if (!body || !document.getElementById('modal-title').textContent.includes('주식시장')) return;
+  body.innerHTML = stocksCache.map(s => `
+    <div class="card-item">
+      <div><h4>${s.name}</h4><p class="text-green">₩${s.price.toLocaleString()} | 보유: ${(myData.stocks && myData.stocks[s.symbol]) || 0}주</p></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn primary" style="width:auto;padding:8px 12px;" onclick="const amt=prompt('매수 수량:','1');if(amt)socket.emit('stock:buy',{symbol:'${s.symbol}',amount:parseInt(amt)})">매수</button>
+        <button class="btn secondary" style="width:auto;padding:8px 12px;" onclick="const amt=prompt('매도 수량:','1');if(amt)socket.emit('stock:sell',{symbol:'${s.symbol}',amount:parseInt(amt)})">매도</button>
+      </div>
+    </div>`).join('');
+}
+
 function switchCasinoGame(game) {
   const view = document.getElementById('casino-game-view');
   if (game === 'blackjack') {
@@ -371,6 +408,9 @@ function handleLogout() {
 
 function startFishingProcess() {
   if (isFishing) return;
+  const baitSelect = document.getElementById('fishing-bait-select');
+  const selectedBait = baitSelect ? baitSelect.value : 'none';
+
   const btn = document.getElementById('btn-fish-action');
   const status = document.getElementById('fishing-status-text');
 
@@ -382,7 +422,7 @@ function startFishingProcess() {
   setTimeout(() => {
     status.textContent = '🌊 찌가 물 위에 둥둥 떠 있습니다... 입질 대기 중 (5초)';
     fishingTimer = setTimeout(() => {
-      socket.emit('fish:catch');
+      socket.emit('fish:catch', { selectedBait });
       status.textContent = '🎉 물고기가 걸렸습니다! 가방을 확인하세요.';
       isFishing = false;
       btn.disabled = false;
