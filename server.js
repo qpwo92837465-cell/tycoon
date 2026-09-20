@@ -237,7 +237,8 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `🎉 승진 축하합니다! [${nextJob.name}] 진급!` });
   });
 
-  socket.on('fish:catch', async ({ selectedBait }) => {
+  // [수정완료] 낚시 성공 시 인벤토리에 물고기가 정상적으로 쏙 들어가도록 보완된 핸들러
+  socket.on('fish:catch', async (data) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
     if (u.hunger < 5) return socket.emit('notify', { success: false, msg: '배가 고파서 낚시를 할 수 없습니다!' });
@@ -245,16 +246,18 @@ io.on('connection', (socket) => {
     u.hunger -= 5;
     const rodLevel = (u.upgrades && u.upgrades.fishingRod) || 1;
     
+    // 안전하게 미끼 정보 추출
+    const selectedBait = data && data.selectedBait ? data.selectedBait : 'none';
     let baitBonus = 0;
-    if (selectedBait && selectedBait !== 'none') {
-      if (!u.inventory || !u.inventory[selectedBait] || u.inventory[selectedBait] <= 0) {
-        return socket.emit('notify', { success: false, msg: '선택한 미끼가 부족합니다!' });
-      }
-      u.inventory[selectedBait]--;
-      if (u.inventory[selectedBait] === 0) delete u.inventory[selectedBait];
 
-      if (selectedBait === 'bait_gold') baitBonus = 18;
-      else if (selectedBait === 'bait_normal') baitBonus = 6;
+    if (selectedBait && selectedBait !== 'none') {
+      if (u.inventory && u.inventory[selectedBait] && u.inventory[selectedBait] > 0) {
+        u.inventory[selectedBait]--;
+        if (u.inventory[selectedBait] === 0) delete u.inventory[selectedBait];
+
+        if (selectedBait === 'bait_gold') baitBonus = 18;
+        else if (selectedBait === 'bait_normal') baitBonus = 6;
+      }
     }
 
     const adjustedFishList = FISH_ITEMS.map(f => {
@@ -277,7 +280,10 @@ io.on('connection', (socket) => {
 
     if (!u.inventory) u.inventory = {};
     u.inventory[caught.id] = (u.inventory[caught.id] || 0) + 1;
-    await saveUser(u); await syncUser();
+    
+    await saveUser(u); 
+    await syncUser();
+    
     socket.emit('notify', { success: true, msg: `🎣 [낚시 성공] [${caught.grade}] ${caught.name} 획득!` });
   });
 
@@ -305,7 +311,6 @@ io.on('connection', (socket) => {
     await saveUser(u); await syncUser();
   });
 
-  // [수정] 1개 및 10개씩 대량 구매 처리 핸들러
   socket.on('vending:buy', async ({ itemId, count }) => {
     if (!currentUser || !count || count <= 0) return;
     const u = await getUserByUsername(currentUser);
@@ -415,7 +420,7 @@ io.on('connection', (socket) => {
       else { msg = '딜러 승리'; }
 
       u.money += reward; await saveUser(u); await syncUser();
-      socket.emit('casino:blackjack:result', { win: reward > bj.bet, pHand: bj.pHand, dHand: bj.dHand, pScore: 21, dScore, reward, msg });
+      socket.emit('casino:bj:result', { win: reward > bj.bet, pHand: bj.pHand, dHand: bj.dHand, pScore: 21, dScore, reward, msg });
       delete socket.data.bj;
     } else {
       socket.emit('casino:bj:state', { pHand: bj.pHand, dHand: [bj.dHand[0], { suit: '?', val: '?' }], pScore: score, dScore: '?' });
@@ -512,4 +517,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 편의점 10개씩 대량 구매 기능 추가 완료 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 낚시 보상 저장 오류 수정 완료 (포트: ${PORT})`));
