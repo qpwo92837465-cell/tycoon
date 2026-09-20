@@ -15,10 +15,11 @@ const server = http.createServer(app);
 const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 
+// 이메일 발송 설정 (지메일 앱 비밀번호 등 입력)
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: 'your_email@gmail.com', // 👈 발송자 이메일
+    user: 'your_email@gmail.com', // 👈 관리자 이메일
     pass: 'your_app_password'     // 👈 구글 앱 비밀번호
   }
 });
@@ -30,7 +31,6 @@ async function getUserByUsername(username) {
   return data;
 }
 
-// 이메일 중복 체크 함수
 async function getUserByEmail(email) {
   const { data } = await supabase.from('users').select('*').eq('email', email).maybeSingle();
   return data;
@@ -40,7 +40,7 @@ async function saveUser(userObj) {
   const payload = {
     username: userObj.username,
     passwordhash: userObj.password || userObj.passwordhash || userObj.passwordHash,
-    email: userObj.email, // 이메일 컬럼 저장
+    email: userObj.email,
     money: userObj.money,
     jobindex: userObj.jobIndex !== undefined ? userObj.jobIndex : userObj.jobindex,
     hunger: userObj.hunger,
@@ -191,14 +191,13 @@ function calcBJ(hand) {
   return sum;
 }
 
-// 이메일 중복 체크 포함된 인증 코드 발송 API
+// 이메일 인증 번호 발송 API (중복 검사 포함)
 app.post('/api/send-code', async (req, res) => {
   const { email } = req.body;
   if (!email || !email.includes('@')) {
     return res.json({ success: false, msg: '올바른 이메일 주소를 입력해주세요.' });
   }
 
-  // 이미 가입된 이메일인지 DB 검사
   const existingEmailUser = await getUserByEmail(email);
   if (existingEmailUser) {
     return res.json({ success: false, msg: '이미 가입된 이메일 주소입니다!' });
@@ -236,8 +235,10 @@ io.on('connection', (socket) => {
     }
   }
 
+  // 회원가입 전용 (이메일 인증 체크 포함)
   socket.on('auth:register', async ({ username, password, email, code }) => {
     if (!username || username.trim().length < 2) return socket.emit('notify', { success: false, msg: '아이디는 2자 이상 입력해주세요.' });
+    if (!password || password.trim().length < 2) return socket.emit('notify', { success: false, msg: '비밀번호를 입력해주세요.' });
     if (!email || emailVerificationCodes[email] !== code) {
       return socket.emit('notify', { success: false, msg: '이메일 인증 코드가 틀렸거나 만료되었습니다.' });
     }
@@ -246,7 +247,7 @@ io.on('connection', (socket) => {
 
     delete emailVerificationCodes[email];
     await saveUser({ username, password, email, money: 200000, jobIndex: 0, hunger: 100, maxHunger: 100, isAdmin: false, inventory: {}, stocks: {}, upgrades: { fishingRod: 1, stomach: 1 } });
-    socket.emit('notify', { success: true, msg: '가입 완료! 로그인하세요.' });
+    socket.emit('notify', { success: true, msg: '가입 완료! 로그인해주세요.' });
   });
 
   socket.on('auth:login', async ({ username, password }) => {
@@ -299,7 +300,6 @@ io.on('connection', (socket) => {
     if (u.hunger < 5) return socket.emit('notify', { success: false, msg: '배가 고파서 낚시를 할 수 없습니다!' });
 
     u.hunger -= 5;
-    const rodLevel = (u.upgrades && u.upgrades.fishingRod) || 1;
     const selectedBait = data && data.selectedBait ? data.selectedBait : 'none';
     let baitBonus = 0;
 
@@ -333,7 +333,10 @@ io.on('connection', (socket) => {
 
     if (!u.inventory) u.inventory = {};
     u.inventory[caught.id] = (u.inventory[caught.id] || 0) + 1;
-    await saveUser(u); await syncUser();
+    
+    await saveUser(u); 
+    await syncUser();
+    
     socket.emit('notify', { success: true, msg: `🎣 [낚시 성공] [${caught.grade}] ${caught.name} 획득!` });
   });
 
@@ -429,4 +432,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 이메일 중복 차단 버전 실행됨 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 로그인/회원가입 페이지 분리 및 이메일 인증 적용 완료 (포트: ${PORT})`));
