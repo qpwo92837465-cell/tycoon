@@ -7,9 +7,7 @@
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-  <!-- 로그인 / 회원가입 모달 -->
   <div id="auth-modal" class="modal-backdrop">
-    <!-- 1. 메인 선택 화면 (로그인 vs 회원가입) -->
     <div id="auth-main-view" class="modal-box">
       <h2 class="title-logo">🏫 ZEP CITY LIFE</h2>
       <div style="display:flex; flex-direction:column; gap:12px; margin-top:25px;">
@@ -18,7 +16,6 @@
       </div>
     </div>
 
-    <!-- 2. 로그인 페이지 -->
     <div id="auth-login-view" class="modal-box hidden">
       <h2 class="title-logo">🔑 로그인</h2>
       <div class="input-group" style="margin-top:15px;"><input type="text" id="login-username" placeholder="아이디"></div>
@@ -29,7 +26,6 @@
       </div>
     </div>
 
-    <!-- 3. 회원가입 페이지 (이메일 인증 포함) -->
     <div id="auth-register-view" class="modal-box hidden">
       <h2 class="title-logo">📝 회원가입</h2>
       <div class="input-group" style="margin-top:15px;"><input type="text" id="reg-username" placeholder="아이디 (2자 이상)"></div>
