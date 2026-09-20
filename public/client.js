@@ -4,7 +4,6 @@ let myPos = { x: 1500, y: 1500 };
 let currentActionTarget = null, isFishing = false, fishingTimer = null;
 const keys = {};
 
-// 개발자 도구 감지 시 브라우저 크래쉬 방어 가드
 (function() {
   const threshold = 160;
   setInterval(() => {
@@ -29,7 +28,6 @@ const ITEM_NAMES = {
   'f_28': '[초월] 우주 심해의 별빛 고래', 'f_29': '[초월] 차원 개척자의 환수', 'f_30': '[초월] 세계관을 삼킨 태초의 리바이아산'
 };
 
-// 화면 전환 함수들
 function showMainView() {
   document.getElementById('auth-main-view').classList.remove('hidden');
   document.getElementById('auth-login-view').classList.add('hidden');
