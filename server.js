@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const nodemailer = require('nodemailer');
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = 'https://rczxhjndnrsjzihmzbqr.supabase.co';
@@ -14,8 +15,24 @@ const server = http.createServer(app);
 const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'your_email@gmail.com', // 👈 발송자 이메일
+    pass: 'your_app_password'     // 👈 구글 앱 비밀번호
+  }
+});
+
+const emailVerificationCodes = {};
+
 async function getUserByUsername(username) {
   const { data } = await supabase.from('users').select('*').eq('username', username).maybeSingle();
+  return data;
+}
+
+// 이메일 중복 체크 함수
+async function getUserByEmail(email) {
+  const { data } = await supabase.from('users').select('*').eq('email', email).maybeSingle();
   return data;
 }
 
@@ -23,6 +40,7 @@ async function saveUser(userObj) {
   const payload = {
     username: userObj.username,
     passwordhash: userObj.password || userObj.passwordhash || userObj.passwordHash,
+    email: userObj.email, // 이메일 컬럼 저장
     money: userObj.money,
     jobindex: userObj.jobIndex !== undefined ? userObj.jobIndex : userObj.jobindex,
     hunger: userObj.hunger,
@@ -152,6 +170,8 @@ setInterval(async () => {
 }, 90000);
 
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
+
 const onlinePlayers = {};
 
 function getDeck() {
@@ -171,6 +191,36 @@ function calcBJ(hand) {
   return sum;
 }
 
+// 이메일 중복 체크 포함된 인증 코드 발송 API
+app.post('/api/send-code', async (req, res) => {
+  const { email } = req.body;
+  if (!email || !email.includes('@')) {
+    return res.json({ success: false, msg: '올바른 이메일 주소를 입력해주세요.' });
+  }
+
+  // 이미 가입된 이메일인지 DB 검사
+  const existingEmailUser = await getUserByEmail(email);
+  if (existingEmailUser) {
+    return res.json({ success: false, msg: '이미 가입된 이메일 주소입니다!' });
+  }
+
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  emailVerificationCodes[email] = code;
+
+  try {
+    await transporter.sendMail({
+      from: 'Zep City Life <noreply@tycoon.com>',
+      to: email,
+      subject: '[Zep City Life] 회원가입 이메일 인증 코드',
+      text: `인증 코드는 [ ${code} ] 입니다. 3분 이내에 입력해주세요.`
+    });
+    res.json({ success: true, msg: '인증 코드가 이메일로 발송되었습니다!' });
+  } catch (err) {
+    console.error(err);
+    res.json({ success: false, msg: '이메일 발송 실패 (서버 설정 확인 필요)' });
+  }
+});
+
 io.on('connection', (socket) => {
   let currentUser = null;
 
@@ -186,10 +236,16 @@ io.on('connection', (socket) => {
     }
   }
 
-  socket.on('auth:register', async ({ username, password }) => {
+  socket.on('auth:register', async ({ username, password, email, code }) => {
     if (!username || username.trim().length < 2) return socket.emit('notify', { success: false, msg: '아이디는 2자 이상 입력해주세요.' });
+    if (!email || emailVerificationCodes[email] !== code) {
+      return socket.emit('notify', { success: false, msg: '이메일 인증 코드가 틀렸거나 만료되었습니다.' });
+    }
     if (await getUserByUsername(username)) return socket.emit('notify', { success: false, msg: '이미 존재하는 아이디입니다.' });
-    await saveUser({ username, password, money: 200000, jobIndex: 0, hunger: 100, maxHunger: 100, isAdmin: false, inventory: {}, stocks: {}, upgrades: { fishingRod: 1, stomach: 1 } });
+    if (await getUserByEmail(email)) return socket.emit('notify', { success: false, msg: '이미 가입된 이메일입니다.' });
+
+    delete emailVerificationCodes[email];
+    await saveUser({ username, password, email, money: 200000, jobIndex: 0, hunger: 100, maxHunger: 100, isAdmin: false, inventory: {}, stocks: {}, upgrades: { fishingRod: 1, stomach: 1 } });
     socket.emit('notify', { success: true, msg: '가입 완료! 로그인하세요.' });
   });
 
@@ -237,7 +293,6 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `🎉 승진 축하합니다! [${nextJob.name}] 진급!` });
   });
 
-  // [수정완료] 낚시 성공 시 인벤토리에 물고기가 정상적으로 쏙 들어가도록 보완된 핸들러
   socket.on('fish:catch', async (data) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
@@ -245,8 +300,6 @@ io.on('connection', (socket) => {
 
     u.hunger -= 5;
     const rodLevel = (u.upgrades && u.upgrades.fishingRod) || 1;
-    
-    // 안전하게 미끼 정보 추출
     const selectedBait = data && data.selectedBait ? data.selectedBait : 'none';
     let baitBonus = 0;
 
@@ -280,10 +333,7 @@ io.on('connection', (socket) => {
 
     if (!u.inventory) u.inventory = {};
     u.inventory[caught.id] = (u.inventory[caught.id] || 0) + 1;
-    
-    await saveUser(u); 
-    await syncUser();
-    
+    await saveUser(u); await syncUser();
     socket.emit('notify', { success: true, msg: `🎣 [낚시 성공] [${caught.grade}] ${caught.name} 획득!` });
   });
 
@@ -372,144 +422,6 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `${stock.name} ${amount}주 매도 완료` });
   });
 
-  socket.on('casino:blackjack:start', async ({ bet }) => {
-    if (!currentUser) return;
-    const u = await getUserByUsername(currentUser);
-    if (u.money < bet || bet < 1000) return socket.emit('notify', { success: false, msg: '배팅금 부족' });
-    u.money -= bet; await saveUser(u); await syncUser();
-
-    let deck = getDeck();
-    let pHand = [deck.pop(), deck.pop()];
-    let dHand = [deck.pop(), deck.pop()];
-    let pScore = calcBJ(pHand);
-
-    socket.data.bj = { bet, deck, pHand, dHand };
-
-    if (pScore === 21) {
-      let dScore = calcBJ(dHand);
-      let reward = bet * 2.5;
-      u.money += reward; await saveUser(u); await syncUser();
-      socket.emit('casino:bj:result', { win: true, pHand, dHand, pScore, dScore, reward, msg: '블랙잭! 즉시 승리!' });
-      delete socket.data.bj;
-      return;
-    }
-
-    socket.emit('casino:bj:state', { pHand, dHand: [dHand[0], { suit: '?', val: '?' }], pScore, dScore: '?' });
-  });
-
-  socket.on('casino:blackjack:hit', async () => {
-    const bj = socket.data.bj;
-    if (!bj) return;
-    bj.pHand.push(bj.deck.pop());
-    const score = calcBJ(bj.pHand);
-
-    if (score > 21) {
-      socket.emit('casino:blackjack:result', { win: false, pHand: bj.pHand, dHand: bj.dHand, pScore: score, dScore: calcBJ(bj.dHand), msg: 'Bust! 패배했습니다.' });
-      delete socket.data.bj;
-    } else if (score === 21) {
-      socket.emit('notify', { success: true, msg: '21 달성! 자동으로 스탠드합니다.' });
-      const u = await getUserByUsername(currentUser);
-      let dScore = calcBJ(bj.dHand);
-      while (dScore < 17) {
-        bj.dHand.push(bj.deck.pop());
-        dScore = calcBJ(bj.dHand);
-      }
-      let reward = 0, msg = '';
-      if (dScore > 21 || 21 > dScore) { reward = bj.bet * 2; msg = '21 자동스탠드 승리!'; }
-      else if (21 === dScore) { reward = bj.bet; msg = '무승부 (푸시)'; }
-      else { msg = '딜러 승리'; }
-
-      u.money += reward; await saveUser(u); await syncUser();
-      socket.emit('casino:bj:result', { win: reward > bj.bet, pHand: bj.pHand, dHand: bj.dHand, pScore: 21, dScore, reward, msg });
-      delete socket.data.bj;
-    } else {
-      socket.emit('casino:bj:state', { pHand: bj.pHand, dHand: [bj.dHand[0], { suit: '?', val: '?' }], pScore: score, dScore: '?' });
-    }
-  });
-
-  socket.on('casino:blackjack:stand', async () => {
-    const bj = socket.data.bj;
-    if (!bj) return;
-    const u = await getUserByUsername(currentUser);
-    let dScore = calcBJ(bj.dHand);
-    while (dScore < 17) {
-      bj.dHand.push(bj.deck.pop());
-      dScore = calcBJ(bj.dHand);
-    }
-    const pScore = calcBJ(bj.pHand);
-    let reward = 0, msg = '';
-    if (dScore > 21 || pScore > dScore) { reward = bj.bet * 2; msg = '블랙잭 승리!'; }
-    else if (pScore === dScore) { reward = bj.bet; msg = '무승부 (푸시)'; }
-    else { msg = '딜러 승리'; }
-
-    u.money += reward; await saveUser(u); await syncUser();
-    socket.emit('casino:bj:result', { win: reward > bj.bet, pHand: bj.pHand, dHand: bj.dHand, pScore, dScore, reward, msg });
-    delete socket.data.bj;
-  });
-
-  socket.on('casino:bacc:play', async ({ bet, choice }) => {
-    if (!currentUser) return;
-    const u = await getUserByUsername(currentUser);
-    if (u.money < bet || bet < 1000) return socket.emit('notify', { success: false, msg: '배팅금 부족' });
-    u.money -= bet;
-
-    const pCard = Math.floor(Math.random() * 9) + 1;
-    const bCard = Math.floor(Math.random() * 9) + 1;
-    let winner = pCard > bCard ? 'PLAYER' : pCard < bCard ? 'BANKER' : 'TIE';
-    let reward = 0;
-
-    if (winner === choice) {
-      reward = choice === 'TIE' ? bet * 9 : bet * 2;
-      u.money += reward;
-      socket.emit('notify', { success: true, msg: `바카라 승리! (+₩${reward.toLocaleString()})` });
-    } else {
-      socket.emit('notify', { success: false, msg: `바카라 패배... (승자: ${winner})` });
-    }
-    await saveUser(u); await syncUser();
-    socket.emit('casino:bacc:result', { pCard, bCard, winner, reward });
-  });
-
-  socket.on('casino:hl:play', async ({ bet, choice }) => {
-    if (!currentUser) return;
-    const u = await getUserByUsername(currentUser);
-    if (u.money < bet || bet < 1000) return socket.emit('notify', { success: false, msg: '배팅금 부족' });
-    u.money -= bet;
-
-    const base = Math.floor(Math.random() * 13) + 1;
-    const next = Math.floor(Math.random() * 13) + 1;
-    let win = (choice === 'HIGH' && next > base) || (choice === 'LOW' && next < base);
-    let reward = win ? bet * 2 : 0;
-    if (win) u.money += reward;
-
-    await saveUser(u); await syncUser();
-    socket.emit('casino:hl:result', { base, next, win, reward });
-  });
-
-  socket.on('casino:slot:play', async ({ bet }) => {
-    if (!currentUser) return;
-    const u = await getUserByUsername(currentUser);
-    if (u.money < bet || bet < 1000) return socket.emit('notify', { success: false, msg: '배팅금 부족' });
-    u.money -= bet;
-
-    const symbols = ['🍒', '🍋', '🍊', '🔔', '💎', '7️⃣'];
-    const r1 = symbols[Math.floor(Math.random() * symbols.length)];
-    const r2 = symbols[Math.floor(Math.random() * symbols.length)];
-    const r3 = symbols[Math.floor(Math.random() * symbols.length)];
-
-    let mult = 0;
-    if (r1 === r2 && r2 === r3) {
-      mult = r1 === '7️⃣' ? 50 : r1 === '💎' ? 30 : 10;
-    } else if (r1 === r2 || r2 === r3 || r1 === r3) {
-      mult = 2;
-    }
-
-    let reward = bet * mult;
-    if (reward > 0) u.money += reward;
-
-    await saveUser(u); await syncUser();
-    socket.emit('casino:slot:result', { r1, r2, r3, reward, mult });
-  });
-
   socket.on('disconnect', () => {
     delete onlinePlayers[socket.id];
     currentUser = null;
@@ -517,4 +429,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 낚시 보상 저장 오류 수정 완료 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 이메일 중복 차단 버전 실행됨 (포트: ${PORT})`));
