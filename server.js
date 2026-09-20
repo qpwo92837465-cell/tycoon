@@ -2,7 +2,6 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-const nodemailer = require('nodemailer');
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = 'https://rczxhjndnrsjzihmzbqr.supabase.co';
@@ -15,24 +14,9 @@ const server = http.createServer(app);
 const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 
-// 이메일 발송 설정 (앱 비밀번호 적용)
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: 'qpwo92837465@gmail.com', // 👈 본인 지메일 주소 입력
-    pass: 'qkgu kwiz elju uxnh'     // 👈 발급받으신 16자리 앱 비밀번호
-  }
-});
-
-const emailVerificationCodes = {};
-
 async function getUserByUsername(username) {
-  const { data } = await supabase.from('users').select('*').eq('username', username).maybeSingle();
-  return data;
-}
-
-async function getUserByEmail(email) {
-  const { data } = await supabase.from('users').select('*').eq('email', email).maybeSingle();
+  const { data, error } = await supabase.from('users').select('*').eq('username', username).maybeSingle();
+  if (error) console.error('[DB ERROR] getUserByUsername:', error.message);
   return data;
 }
 
@@ -40,17 +24,18 @@ async function saveUser(userObj) {
   const payload = {
     username: userObj.username,
     passwordhash: userObj.password || userObj.passwordhash || userObj.passwordHash,
-    email: userObj.email,
-    money: userObj.money,
-    jobindex: userObj.jobIndex !== undefined ? userObj.jobIndex : userObj.jobindex,
-    hunger: userObj.hunger,
-    maxhunger: userObj.maxHunger || userObj.maxhunger || 100,
-    isadmin: userObj.isAdmin !== undefined ? userObj.isAdmin : userObj.isadmin,
+    money: Number(userObj.money) || 0,
+    jobindex: Number(userObj.jobIndex !== undefined ? userObj.jobIndex : userObj.jobindex) || 0,
+    hunger: Number(userObj.hunger) || 100,
+    maxhunger: Number(userObj.maxHunger || userObj.maxhunger || 100),
+    isadmin: !!userObj.isadmin,
     stocks: userObj.stocks || {},
     inventory: userObj.inventory || {},
     upgrades: userObj.upgrades || { fishingRod: 1, stomach: 1 }
   };
-  await supabase.from('users').upsert([payload], { onConflict: 'username' });
+  
+  const { error } = await supabase.from('users').upsert([payload], { onConflict: 'username' });
+  if (error) console.error('[DB ERROR] saveUser failed:', error.message);
 }
 
 const JOBS = [
@@ -191,34 +176,6 @@ function calcBJ(hand) {
   return sum;
 }
 
-app.post('/api/send-code', async (req, res) => {
-  const { email } = req.body;
-  if (!email || !email.includes('@')) {
-    return res.json({ success: false, msg: '올바른 이메일 주소를 입력해주세요.' });
-  }
-
-  const existingEmailUser = await getUserByEmail(email);
-  if (existingEmailUser) {
-    return res.json({ success: false, msg: '이미 가입된 이메일 주소입니다!' });
-  }
-
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  emailVerificationCodes[email] = code;
-
-  try {
-    await transporter.sendMail({
-      from: 'Zep City Life <noreply@tycoon.com>',
-      to: email,
-      subject: '[Zep City Life] 회원가입 이메일 인증 코드',
-      text: `인증 코드는 [ ${code} ] 입니다. 3분 이내에 입력해주세요.`
-    });
-    res.json({ success: true, msg: '인증 코드가 이메일로 발송되었습니다!' });
-  } catch (err) {
-    console.error(err);
-    res.json({ success: false, msg: '이메일 발송 실패 (서버 설정 확인 필요)' });
-  }
-});
-
 io.on('connection', (socket) => {
   let currentUser = null;
 
@@ -234,17 +191,12 @@ io.on('connection', (socket) => {
     }
   }
 
-  socket.on('auth:register', async ({ username, password, email, code }) => {
+  socket.on('auth:register', async ({ username, password }) => {
     if (!username || username.trim().length < 2) return socket.emit('notify', { success: false, msg: '아이디는 2자 이상 입력해주세요.' });
     if (!password || password.trim().length < 2) return socket.emit('notify', { success: false, msg: '비밀번호를 입력해주세요.' });
-    if (!email || emailVerificationCodes[email] !== code) {
-      return socket.emit('notify', { success: false, msg: '이메일 인증 코드가 틀렸거나 만료되었습니다.' });
-    }
     if (await getUserByUsername(username)) return socket.emit('notify', { success: false, msg: '이미 존재하는 아이디입니다.' });
-    if (await getUserByEmail(email)) return socket.emit('notify', { success: false, msg: '이미 가입된 이메일입니다.' });
 
-    delete emailVerificationCodes[email];
-    await saveUser({ username, password, email, money: 200000, jobIndex: 0, hunger: 100, maxHunger: 100, isAdmin: false, inventory: {}, stocks: {}, upgrades: { fishingRod: 1, stomach: 1 } });
+    await saveUser({ username, password, money: 200000, jobIndex: 0, hunger: 100, maxHunger: 100, isAdmin: false, inventory: {}, stocks: {}, upgrades: { fishingRod: 1, stomach: 1 } });
     socket.emit('notify', { success: true, msg: '가입 완료! 로그인해주세요.' });
   });
 
@@ -295,6 +247,7 @@ io.on('connection', (socket) => {
   socket.on('fish:catch', async (data) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
+    if (!u) return;
     if (u.hunger < 5) return socket.emit('notify', { success: false, msg: '배가 고파서 낚시를 할 수 없습니다!' });
 
     u.hunger -= 5;
@@ -329,7 +282,7 @@ io.on('connection', (socket) => {
       if (randomVal <= currentSum) { caught = f; break; }
     }
 
-    if (!u.inventory) u.inventory = {};
+    if (!u.inventory || typeof u.inventory !== 'object') u.inventory = {};
     u.inventory[caught.id] = (u.inventory[caught.id] || 0) + 1;
     
     await saveUser(u); 
@@ -341,6 +294,7 @@ io.on('connection', (socket) => {
   socket.on('upgrade:buy', async (type) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
+    if (!u) return;
     if (!u.upgrades) u.upgrades = { fishingRod: 1, stomach: 1 };
 
     if (type === 'fishingRod') {
@@ -365,20 +319,24 @@ io.on('connection', (socket) => {
   socket.on('vending:buy', async ({ itemId, count }) => {
     if (!currentUser || !count || count <= 0) return;
     const u = await getUserByUsername(currentUser);
+    if (!u) return;
     const item = VENDING_ITEMS.find(v => v.id === itemId);
     const totalCost = item.cost * count;
 
     if (!item || u.money < totalCost) return socket.emit('notify', { success: false, msg: '잔액 부족' });
     u.money -= totalCost;
-    if (!u.inventory) u.inventory = {};
+    if (!u.inventory || typeof u.inventory !== 'object') u.inventory = {};
     u.inventory[itemId] = (u.inventory[itemId] || 0) + count;
-    await saveUser(u); await syncUser();
+    
+    await saveUser(u); 
+    await syncUser();
     socket.emit('notify', { success: true, msg: `${item.name} ${count}개 구매 완료!` });
   });
 
   socket.on('inventory:use', async (itemId) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
+    if (!u) return;
     const item = VENDING_ITEMS.find(v => v.id === itemId);
     const fish = FISH_ITEMS.find(f => f.id === itemId);
     const maxH = u.maxhunger || 100;
@@ -400,11 +358,12 @@ io.on('connection', (socket) => {
   socket.on('stock:buy', async ({ symbol, amount }) => {
     if (!currentUser || amount <= 0) return;
     const u = await getUserByUsername(currentUser);
+    if (!u) return;
     const stock = STOCKS.find(s => s.symbol === symbol);
     const cost = stock.price * amount;
     if (u.money < cost) return socket.emit('notify', { success: false, msg: '잔액 부족' });
     u.money -= cost;
-    if (!u.stocks) u.stocks = {};
+    if (!u.stocks || typeof u.stocks !== 'object') u.stocks = {};
     u.stocks[symbol] = (u.stocks[symbol] || 0) + amount;
     await saveUser(u); await syncUser();
     socket.emit('notify', { success: true, msg: `${stock.name} ${amount}주 매수 완료` });
@@ -413,6 +372,7 @@ io.on('connection', (socket) => {
   socket.on('stock:sell', async ({ symbol, amount }) => {
     if (!currentUser || amount <= 0) return;
     const u = await getUserByUsername(currentUser);
+    if (!u) return;
     const stock = STOCKS.find(s => s.symbol === symbol);
     const owned = (u.stocks && u.stocks[symbol]) || 0;
     if (owned < amount) return socket.emit('notify', { success: false, msg: '보유 주식 부족' });
@@ -430,4 +390,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 구글 앱 비밀번호 연동 서버 실행됨 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 이메일 인증 제거 및 인벤토리 정상화 완료 (포트: ${PORT})`));
