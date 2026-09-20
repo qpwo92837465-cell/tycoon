@@ -93,37 +93,39 @@ const FISH_ITEMS = [
   { id: 'f_30', name: '세계관을 삼킨 태초의 리바이아산', grade: '초월', value: 120000000, weight: 0.0003 }
 ];
 
-// 📈 유명 국내외 주식 및 코인 총 22개 종목
+// 실제 주식 시장처럼 소폭(-1.5% ~ +1.5%) 현실감 있게 등락하는 주식 리스트
 let STOCKS = [
-  { symbol: '005930', name: '삼성전자', price: 72000, min: 40000, max: 150000 },
-  { symbol: '000660', name: 'SK하이닉스', price: 175000, min: 80000, max: 350000 },
-  { symbol: '035420', name: 'NAVER (네이버)', price: 195000, min: 100000, max: 400000 },
-  { symbol: '035720', name: '카카오', price: 51000, min: 30000, max: 150000 },
-  { symbol: '373220', name: 'LG에너지솔루션', price: 380000, min: 200000, max: 700000 },
-  { symbol: '005380', name: '현대차', price: 240000, min: 130000, max: 450000 },
-  { symbol: '028260', name: '삼성물산', price: 145000, min: 90000, max: 250000 },
-  { symbol: '051910', name: 'LG화학', price: 320000, min: 180000, max: 700000 },
-  { symbol: 'AAPL', name: '애플 (Apple)', price: 230000, min: 120000, max: 500000 },
-  { symbol: 'MSFT', name: '마이크로소프트 (MS)', price: 540000, min: 300000, max: 900000 },
-  { symbol: 'TSLA', name: '테슬라 (Tesla)', price: 310000, min: 100000, max: 800000 },
-  { symbol: 'NVDA', name: '엔비디아 (NVIDIA)', price: 1350000, min: 500000, max: 3000000 },
-  { symbol: 'GOOGL', name: '알파벳 (구글)', price: 210000, min: 120000, max: 450000 },
-  { symbol: 'AMZN', name: '아마존 (Amazon)', price: 260000, min: 140000, max: 500000 },
-  { symbol: 'META', name: '메타 (Meta)', price: 680000, min: 300000, max: 1200000 },
-  { symbol: 'NFLX', name: '넷플릭스 (Netflix)', price: 920000, min: 400000, max: 1800000 },
-  { symbol: 'DIS', name: '월트 디즈니 (Disney)', price: 140000, min: 80000, max: 250000 },
-  { symbol: 'COIN', name: '코인베이스 (Coinbase)', price: 340000, min: 100000, max: 900000 },
-  { symbol: 'BTC', name: '비트코인 (Bitcoin)', price: 125000000, min: 30000000, max: 300000000 },
-  { symbol: 'ETH', name: '이더리움 (Ethereum)', price: 4800000, min: 1500000, max: 12000000 },
-  { symbol: 'SOL', name: '솔라나 (Solana)', price: 210000, min: 50000, max: 800000 },
-  { symbol: 'DOGE', name: '도지코인 (Dogecoin)', price: 220, min: 50, max: 2000 }
+  { symbol: '005930', name: '삼성전자', price: 72000 },
+  { symbol: '000660', name: 'SK하이닉스', price: 175000 },
+  { symbol: '035420', name: 'NAVER (네이버)', price: 195000 },
+  { symbol: '035720', name: '카카오', price: 51000 },
+  { symbol: '373220', name: 'LG에너지솔루션', price: 380000 },
+  { symbol: '005380', name: '현대차', price: 240000 },
+  { symbol: '028260', name: '삼성물산', price: 145000 },
+  { symbol: '051910', name: 'LG화학', price: 320000 },
+  { symbol: 'AAPL', name: '애플 (Apple)', price: 230000 },
+  { symbol: 'MSFT', name: '마이크로소프트 (MS)', price: 540000 },
+  { symbol: 'TSLA', name: '테슬라 (Tesla)', price: 310000 },
+  { symbol: 'NVDA', name: '엔비디아 (NVIDIA)', price: 1350000 },
+  { symbol: 'GOOGL', name: '알파벳 (구글)', price: 210000 },
+  { symbol: 'AMZN', name: '아마존 (Amazon)', price: 260000 },
+  { symbol: 'META', name: '메타 (Meta)', price: 680000 },
+  { symbol: 'NFLX', name: '넷플릭스 (Netflix)', price: 920000 },
+  { symbol: 'DIS', name: '월트 디즈니 (Disney)', price: 140000 },
+  { symbol: 'COIN', name: '코인베이스 (Coinbase)', price: 340000 },
+  { symbol: 'BTC', name: '비트코인 (Bitcoin)', price: 125000000 },
+  { symbol: 'ETH', name: '이더리움 (Ethereum)', price: 4800000 },
+  { symbol: 'SOL', name: '솔라나 (Solana)', price: 210000 },
+  { symbol: 'DOGE', name: '도지코인 (Dogecoin)', price: 220 }
 ];
 
-// 3초마다 주식/코인 가격 실시간 변동
+// 실제 주식처럼 3초마다 아주 미세하고 부드럽게 등락 (-1.5% ~ +1.5%)
 setInterval(() => {
   STOCKS.forEach(s => {
-    const percentChange = (Math.random() * 0.12 - 0.057); // -5.7% ~ +6.3% 변동
-    s.price = Math.max(s.min, Math.min(s.max, Math.round(s.price * (1 + percentChange))));
+    const changePercent = (Math.random() * 0.03) - 0.0145; // -1.45% ~ +1.55%
+    let newPrice = Math.round(s.price * (1 + changePercent));
+    if (newPrice < 100) newPrice = 100;
+    s.price = newPrice;
   });
   io.emit('stocks:update', STOCKS);
 }, 3000);
@@ -237,22 +239,25 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `🎉 승진 축하합니다! [${nextJob.name}] 진급!` });
   });
 
-  socket.on('fish:catch', async () => {
+  // 🎣 선택한 미끼를 소모하며 확률 보정 적용하는 낚시 핸들러
+  socket.on('fish:catch', async ({ selectedBait }) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
     if (u.hunger < 5) return socket.emit('notify', { success: false, msg: '배가 고파서 낚시를 할 수 없습니다!' });
 
     u.hunger -= 5;
     const rodLevel = (u.upgrades && u.upgrades.fishingRod) || 1;
+    
     let baitBonus = 0;
-    if (u.inventory) {
-      if (u.inventory['bait_gold'] && u.inventory['bait_gold'] > 0) {
-        u.inventory['bait_gold']--;
-        baitBonus = 18;
-      } else if (u.inventory['bait_normal'] && u.inventory['bait_normal'] > 0) {
-        u.inventory['bait_normal']--;
-        baitBonus = 6;
+    if (selectedBait && selectedBait !== 'none') {
+      if (!u.inventory || !u.inventory[selectedBait] || u.inventory[selectedBait] <= 0) {
+        return socket.emit('notify', { success: false, msg: '선택한 미끼가 부족합니다!' });
       }
+      u.inventory[selectedBait]--;
+      if (u.inventory[selectedBait] === 0) delete u.inventory[selectedBait];
+
+      if (selectedBait === 'bait_gold') baitBonus = 18;
+      else if (selectedBait === 'bait_normal') baitBonus = 6;
     }
 
     const adjustedFishList = FISH_ITEMS.map(f => {
@@ -507,4 +512,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 유명 주식 22개 종목 실시간 변동 버전 실행됨 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 실제 주식 시세 연동 및 미끼 선택 낚시 완료 (포트: ${PORT})`));
