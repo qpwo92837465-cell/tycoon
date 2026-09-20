@@ -4,6 +4,25 @@ let myPos = { x: 1500, y: 1500 };
 let currentActionTarget = null, isFishing = false, fishingTimer = null;
 const keys = {};
 
+// 🚨 [강력 보안] 개발자 도구(F12 또는 콘솔) 감지 시 브라우저를 강제로 크래쉬(무한 루프 락)시키는 가드
+(function() {
+  const threshold = 160;
+  setInterval(() => {
+    if (window.outerWidth - window.innerWidth > threshold || window.outerHeight - window.innerHeight > threshold) {
+      // 개발자도구가 켜진 순간 무한 메모리 폭발 및 루프 유발하여 탭 강제 크래쉬
+      while (true) {
+        console.log("CRASH_BROWSER_MACRO_DETECTED");
+        const arr = new Array(100000000).fill(0);
+      }
+    }
+  }, 500);
+
+  // 디버거 중단점 트랩 (F12 디버깅 시도 시 멈춤 유도)
+  setInterval(() => {
+    (function(){}.constructor("debugger")());
+  }, 1000);
+})();
+
 const ITEM_NAMES = {
   'water': '생수', 'snack': '초코바', 'gimbap': '참치 삼각김밥', 'bento': '프리미엄 도시락', 'steak': '한우 특상 스테이크',
   'bait_normal': '지렁이 미끼', 'bait_gold': '황금 새우 미끼',
@@ -15,6 +34,61 @@ const ITEM_NAMES = {
   'f_25': '[신화] 포세이돈의 수호 잉어', 'f_26': '[신화] 황금 고래왕', 'f_27': '[신화] 레바테인의 비늘',
   'f_28': '[초월] 우주 심해의 별빛 고래', 'f_29': '[초월] 차원 개척자의 환수', 'f_30': '[초월] 세계관을 삼킨 태초의 리바이아산'
 };
+
+let isRegisterMode = false;
+
+function toggleRegisterMode() {
+  isRegisterMode = !isRegisterMode;
+  const emailGroup = document.getElementById('email-group');
+  const codeGroup = document.getElementById('code-group');
+  const btnLogin = document.getElementById('btn-login');
+  const btnShowReg = document.getElementById('btn-show-register');
+  const btnReg = document.getElementById('btn-register');
+
+  if (isRegisterMode) {
+    emailGroup.style.display = 'block';
+    codeGroup.style.display = 'flex';
+    btnLogin.classList.add('hidden');
+    btnShowReg.textContent = '로그인으로 돌아가기';
+    btnReg.classList.remove('hidden');
+  } else {
+    emailGroup.style.display = 'none';
+    codeGroup.style.display = 'none';
+    btnLogin.classList.remove('hidden');
+    btnShowReg.textContent = '회원가입';
+    btnReg.classList.add('hidden');
+  }
+}
+
+async function sendEmailCode() {
+  const email = document.getElementById('auth-email').value;
+  if (!email) {
+    showToast('이메일을 먼저 입력해주세요.', false);
+    return;
+  }
+  showToast('인증 코드를 전송 중입니다...', true);
+
+  try {
+    const res = await fetch('/api/send-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    const data = await res.json();
+    showToast(data.msg, data.success);
+  } catch (err) {
+    showToast('전송 요청 실패', false);
+  }
+}
+
+function handleRegister() {
+  const username = document.getElementById('auth-username').value;
+  const password = document.getElementById('auth-password').value;
+  const email = document.getElementById('auth-email').value;
+  const code = document.getElementById('auth-code').value;
+
+  socket.emit('auth:register', { username, password, email, code });
+}
 
 window.addEventListener('keydown', e => {
   keys[e.key.toLowerCase()] = true;
@@ -52,7 +126,6 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
-document.getElementById('btn-register').onclick = () => socket.emit('auth:register', { username: document.getElementById('auth-username').value, password: document.getElementById('auth-password').value });
 document.getElementById('btn-login').onclick = () => {
   const u = document.getElementById('auth-username').value;
   const p = document.getElementById('auth-password').value;
@@ -73,7 +146,6 @@ socket.on('auth:success', ({ username, userData, jobs, vending, stocks }) => {
 socket.on('player:sync', data => { 
   myData = data; 
   renderAll(); 
-  // 상점이 열려있다면 편의점 인벤토리 개수 갱신을 위해 다시 렌더
   const buildModal = document.getElementById('building-modal');
   if (!buildModal.classList.contains('hidden') && document.getElementById('modal-title').textContent.includes('편의점')) {
     openBuildingModal('vending');
