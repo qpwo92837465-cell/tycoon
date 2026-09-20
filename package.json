@@ -1,7 +1,6 @@
 {
-  "name": "economy-tycoon-supabase",
+  "name": "zep-style-metaverse-tycoon",
   "version": "1.0.0",
-  "description": "Multiplayer Life Economy Tycoon",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -9,6 +8,7 @@
   "dependencies": {
     "express": "^4.19.2",
     "socket.io": "^4.7.5",
-    "@supabase/supabase-js": "^2.39.8"
+    "@supabase/supabase-js": "^2.39.8",
+    "nodemailer": "^6.9.13"
   }
 }
