@@ -12,9 +12,18 @@
       <h2 class="title-logo">🏫 ZEP CITY LIFE</h2>
       <div class="input-group"><input type="text" id="auth-username" placeholder="아이디"></div>
       <div class="input-group"><input type="password" id="auth-password" placeholder="비밀번호"></div>
-      <div class="auth-buttons">
+      
+      <!-- 이메일 및 인증번호 입력 칸 (처음엔 숨김) -->
+      <div class="input-group" id="email-group" style="display:none;"><input type="email" id="auth-email" placeholder="이메일 주소"></div>
+      <div class="input-group" id="code-group" style="display:none; display:flex; gap:5px;">
+        <input type="text" id="auth-code" placeholder="인증코드 6자리" style="flex:1;">
+        <button class="btn warning" style="width:auto; padding:0 12px;" onclick="sendEmailCode()">전송</button>
+      </div>
+
+      <div class="auth-buttons" style="display:flex; flex-direction:column; gap:8px;">
         <button id="btn-login" class="btn primary">로그인</button>
-        <button id="btn-register" class="btn secondary">회원가입</button>
+        <button id="btn-show-register" class="btn secondary" onclick="toggleRegisterMode()">회원가입</button>
+        <button id="btn-register" class="btn success hidden" onclick="handleRegister()">가입 완료하기</button>
       </div>
     </div>
   </div>
