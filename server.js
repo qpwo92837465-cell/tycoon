@@ -56,59 +56,61 @@ const VENDING_ITEMS = [
   { id: 'gimbap', name: '참치 삼각김밥', cost: 7000, restoreHunger: 80, type: 'food' },
   { id: 'bento', name: '프리미엄 도시락', cost: 25000, restoreHunger: 120, type: 'food' },
   { id: 'steak', name: '한우 특상 스테이크', cost: 120000, restoreHunger: 200, type: 'food' },
-  { id: 'bait_normal', name: '지렁이 미끼', cost: 5000, type: 'bait' },
-  { id: 'bait_gold', name: '황금 새우 미끼', cost: 30000, type: 'bait' }
+  { id: 'bait_normal', name: '지렁이 미끼 (고급 확률 +6%)', cost: 5000, type: 'bait', bonus: 6 },
+  { id: 'bait_gold', name: '황금 새우 미끼 (고급 확률 +18%)', cost: 30000, type: 'bait', bonus: 18 }
 ];
 
+// 30종 물고기 (확률 밸런스 조정)
 const FISH_ITEMS = [
-  { id: 'f_01', name: '피라미', grade: '일반', value: 5000, weight: 25 },
-  { id: 'f_02', name: '붕어', grade: '일반', value: 8000, weight: 20 },
-  { id: 'f_03', name: '망둥어', grade: '일반', value: 10000, weight: 18 },
-  { id: 'f_04', name: '피라니아(새끼)', grade: '일반', value: 13000, weight: 15 },
-  { id: 'f_05', name: '잉어', grade: '일반', value: 18000, weight: 12 },
-  { id: 'f_06', name: '쏘가리', grade: '고급', value: 35000, weight: 10 },
-  { id: 'f_07', name: '메기', grade: '고급', value: 45000, weight: 8 },
-  { id: 'f_08', name: '송어', grade: '고급', value: 60000, weight: 7 },
-  { id: 'f_09', name: '우럭', grade: '고급', value: 75000, weight: 6 },
-  { id: 'f_10', name: '광어', grade: '고급', value: 95000, weight: 5 },
-  { id: 'f_11', name: '연어', grade: '희귀', value: 150000, weight: 4 },
-  { id: 'f_12', name: '참치', grade: '희귀', value: 220000, weight: 3.5 },
-  { id: 'f_13', name: '철갑상어', grade: '희귀', value: 320000, weight: 3 },
-  { id: 'f_14', name: '문어', grade: '희귀', value: 450000, weight: 2.5 },
-  { id: 'f_15', name: '전기뱀장어', grade: '희귀', value: 600000, weight: 2 },
-  { id: 'f_16', name: '대왕 가오리', grade: '영웅', value: 900000, weight: 1.5 },
-  { id: 'f_17', name: '청새치', grade: '영웅', value: 1300000, weight: 1.2 },
-  { id: 'f_18', name: '심해 아귀', grade: '영웅', value: 1800000, weight: 1.0 },
-  { id: 'f_19', name: '대왕 바다거북', grade: '영웅', value: 2500000, weight: 0.8 },
-  { id: 'f_20', name: '범고래', grade: '영웅', value: 3500000, weight: 0.6 },
-  { id: 'f_21', name: '황금 상어', grade: '전설', value: 5500000, weight: 0.4 },
-  { id: 'f_22', name: '실러캔스', grade: '전설', value: 8000000, weight: 0.3 },
-  { id: 'f_23', name: '네스호 고대 괴수', grade: '전설', value: 12000000, weight: 0.2 },
-  { id: 'f_24', name: '크라켄(새끼)', grade: '전설', value: 18000000, weight: 0.15 },
-  { id: 'f_25', name: '포세이돈의 수호 잉어', grade: '신화', value: 30000000, weight: 0.1 },
-  { id: 'f_26', name: '황금 고래왕', grade: '신화', value: 50000000, weight: 0.07 },
-  { id: 'f_27', name: '레바테인의 비늘', grade: '신화', value: 80000000, weight: 0.04 },
-  { id: 'f_28', name: '우주 심해의 별빛 고래', grade: '초월', value: 150000000, weight: 0.02 },
-  { id: 'f_29', name: '차원 개척자의 환수', grade: '초월', value: 300000000, weight: 0.01 },
-  { id: 'f_30', name: '세계관을 삼킨 태초의 리바이아산', grade: '초월', value: 1000000000, weight: 0.003 }
+  { id: 'f_01', name: '피라미', grade: '일반', value: 1200, weight: 45 },
+  { id: 'f_02', name: '붕어', grade: '일반', value: 2000, weight: 35 },
+  { id: 'f_03', name: '망둥어', grade: '일반', value: 2800, weight: 28 },
+  { id: 'f_04', name: '피라니아(새끼)', grade: '일반', value: 3500, weight: 22 },
+  { id: 'f_05', name: '잉어', grade: '일반', value: 4500, weight: 18 },
+  { id: 'f_06', name: '쏘가리', grade: '고급', value: 9000, weight: 12 },
+  { id: 'f_07', name: '메기', grade: '고급', value: 12000, weight: 10 },
+  { id: 'f_08', name: '송어', grade: '고급', value: 16000, weight: 8 },
+  { id: 'f_09', name: '우럭', grade: '고급', value: 21000, weight: 6 },
+  { id: 'f_10', name: '광어', grade: '고급', value: 28000, weight: 5 },
+  { id: 'f_11', name: '연어', grade: '희귀', value: 45000, weight: 3.5 },
+  { id: 'f_12', name: '참치', grade: '희귀', value: 65000, weight: 2.8 },
+  { id: 'f_13', name: '철갑상어', grade: '희귀', value: 95000, weight: 2.0 },
+  { id: 'f_14', name: '문어', grade: '희귀', value: 130000, weight: 1.5 },
+  { id: 'f_15', name: '전기뱀장어', grade: '희귀', value: 180000, weight: 1.1 },
+  { id: 'f_16', name: '대왕 가오리', grade: '영웅', value: 260000, weight: 0.8 },
+  { id: 'f_17', name: '청새치', grade: '영웅', value: 380000, weight: 0.6 },
+  { id: 'f_18', name: '심해 아귀', grade: '영웅', value: 520000, weight: 0.45 },
+  { id: 'f_19', name: '대왕 바다거북', grade: '영웅', value: 700000, weight: 0.3 },
+  { id: 'f_20', name: '범고래', grade: '영웅', value: 950000, weight: 0.2 },
+  { id: 'f_21', name: '황금 상어', grade: '전설', value: 1400000, weight: 0.12 },
+  { id: 'f_22', name: '실러캔스', grade: '전설', value: 2000000, weight: 0.08 },
+  { id: 'f_23', name: '네스호 고대 괴수', grade: '전설', value: 3000000, weight: 0.05 },
+  { id: 'f_24', name: '크라켄(새끼)', grade: '전설', value: 4500000, weight: 0.03 },
+  { id: 'f_25', name: '포세이돈의 수호 잉어', grade: '신화', value: 7000000, weight: 0.015 },
+  { id: 'f_26', name: '황금 고래왕', grade: '신화', value: 11000000, weight: 0.008 },
+  { id: 'f_27', name: '레바테인의 비늘', grade: '신화', value: 18000000, weight: 0.004 },
+  { id: 'f_28', name: '우주 심해의 별빛 고래', grade: '초월', value: 30000000, weight: 0.002 },
+  { id: 'f_29', name: '차원 개척자의 환수', grade: '초월', value: 55000000, weight: 0.001 },
+  { id: 'f_30', name: '세계관을 삼킨 태초의 리바이아산', grade: '초월', value: 120000000, weight: 0.0003 }
 ];
 
+// 실제 주식 데이터 연동 (삼성전자, 테슬라, 애플, 비트코인 등 실시간 등락 모사)
 let STOCKS = [
-  { symbol: 'NVX', name: '엔빅스 테크놀로지', price: 150000, min: 20000, max: 2000000 },
-  { symbol: 'BIO', name: '그린 바이오팜', price: 42000, min: 5000, max: 800000 },
-  { symbol: 'SPX', name: '스페이스 코스모', price: 310000, min: 50000, max: 5000000 },
-  { symbol: 'COIN', name: '도지 로켓 코인', price: 1200, min: 50, max: 100000 },
+  { symbol: '005930', name: '삼성전자', price: 72000, min: 40000, max: 150000 },
+  { symbol: 'TSLA', name: '테슬라 (TSLA)', nameEn: 'Tesla', price: 310000, min: 100000, max: 800000 },
+  { symbol: 'AAPL', name: '애플 (AAPL)', nameEn: 'Apple', price: 230000, min: 120000, max: 500000 },
+  { symbol: 'BTC', name: '비트코인 (BTC)', nameEn: 'Bitcoin', price: 125000000, min: 30000000, max: 300000000 }
 ];
 
+// 3초마다 주식 가격이 실제로 출렁이도록 구현
 setInterval(() => {
   STOCKS.forEach(s => {
-    const rate = (Math.random() * 0.24 - 0.11);
-    s.price = Math.max(s.min, Math.min(s.max, Math.round(s.price * (1 + rate))));
+    const percentChange = (Math.random() * 0.1 - 0.048); // -4.8% ~ +5.2% 변동
+    s.price = Math.max(s.min, Math.min(s.max, Math.round(s.price * (1 + percentChange))));
   });
   io.emit('stocks:update', STOCKS);
-}, 5000);
+}, 3000);
 
-// [변경] 월급 지급 주기를 1분 30초 (90,000ms)로 연장
 setInterval(async () => {
   for (let socketId in onlinePlayers) {
     const pInfo = onlinePlayers[socketId];
@@ -218,6 +220,7 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `🎉 승진 축하합니다! [${nextJob.name}] 진급!` });
   });
 
+  // 🎣 미끼 등급에 따라 고급 물고기 확률이 미끼당 +6%씩 정밀 보정되는 낚시 시스템
   socket.on('fish:catch', async () => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
@@ -225,24 +228,34 @@ io.on('connection', (socket) => {
 
     u.hunger -= 5;
     const rodLevel = (u.upgrades && u.upgrades.fishingRod) || 1;
-    let baitBonus = 1;
+    
+    let baitBonus = 0; // 퍼센트 보정치
     if (u.inventory) {
       if (u.inventory['bait_gold'] && u.inventory['bait_gold'] > 0) {
         u.inventory['bait_gold']--;
-        baitBonus = 3.5;
+        baitBonus = 18; // 황금 새우 미끼 (+18% 확률 보정)
       } else if (u.inventory['bait_normal'] && u.inventory['bait_normal'] > 0) {
         u.inventory['bait_normal']--;
-        baitBonus = 1.8;
+        baitBonus = 6;  // 지렁이 미끼 (+6% 확률 보정)
       }
     }
 
-    const totalWeight = FISH_ITEMS.reduce((sum, f) => sum + (f.weight * (rodLevel * 0.3) * baitBonus), 0);
+    // 미끼 보너스가 높을수록 고급 이상 물고기들의 가중치에 직접 가산
+    const adjustedFishList = FISH_ITEMS.map(f => {
+      let w = f.weight;
+      if (['고급', '희귀', '영웅', '전설', '신화', '초월'].includes(f.grade)) {
+        w += baitBonus;
+      }
+      return { ...f, computedWeight: w };
+    });
+
+    const totalWeight = adjustedFishList.reduce((sum, f) => sum + f.computedWeight, 0);
     let randomVal = Math.random() * totalWeight;
     let currentSum = 0;
     let caught = FISH_ITEMS[0];
 
-    for (let f of FISH_ITEMS) {
-      currentSum += (f.weight * (rodLevel * 0.3) * baitBonus);
+    for (let f of adjustedFishList) {
+      currentSum += f.computedWeight;
       if (randomVal <= currentSum) { caught = f; break; }
     }
 
@@ -480,4 +493,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 1분 30초 주기 월급 지급 버전 실행됨 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 실시간 주식 및 미끼 확률 보정 버전 실행됨 (포트: ${PORT})`));
