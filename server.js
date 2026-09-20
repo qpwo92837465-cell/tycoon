@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 3000;
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: 'your_email@gmail.com', // 👈 본인 지메일 주소 입력
+    user: 'qpwo92837465@gmail.com', // 👈 본인 지메일 주소 입력
     pass: 'qkgu kwiz elju uxnh'     // 👈 발급받으신 16자리 앱 비밀번호
   }
 });
