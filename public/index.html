@@ -7,7 +7,9 @@
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
+  <!-- 로그인 / 회원가입 모달 -->
   <div id="auth-modal" class="modal-backdrop">
+    <!-- 1. 메인 선택 화면 -->
     <div id="auth-main-view" class="modal-box">
       <h2 class="title-logo">🏫 ZEP CITY LIFE</h2>
       <div style="display:flex; flex-direction:column; gap:12px; margin-top:25px;">
@@ -16,6 +18,7 @@
       </div>
     </div>
 
+    <!-- 2. 로그인 페이지 -->
     <div id="auth-login-view" class="modal-box hidden">
       <h2 class="title-logo">🔑 로그인</h2>
       <div class="input-group" style="margin-top:15px;"><input type="text" id="login-username" placeholder="아이디"></div>
@@ -26,16 +29,12 @@
       </div>
     </div>
 
+    <!-- 3. 회원가입 페이지 (간편하게 아이디/비번만 입력) -->
     <div id="auth-register-view" class="modal-box hidden">
       <h2 class="title-logo">📝 회원가입</h2>
       <div class="input-group" style="margin-top:15px;"><input type="text" id="reg-username" placeholder="아이디 (2자 이상)"></div>
       <div class="input-group"><input type="password" id="reg-password" placeholder="비밀번호"></div>
-      <div class="input-group" style="display:flex; gap:5px;">
-        <input type="email" id="reg-email" placeholder="이메일 주소" style="flex:1;">
-        <button class="btn warning" style="width:auto; padding:0 10px; font-size:13px;" onclick="sendEmailCode()">인증번호 전송</button>
-      </div>
-      <div class="input-group"><input type="text" id="reg-code" placeholder="인증번호 6자리 입력"></div>
-      <div style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:15px;">
         <button class="btn success" onclick="handleRegister()">가입 완료</button>
         <button class="btn secondary" onclick="showMainView()">돌아가기</button>
       </div>
