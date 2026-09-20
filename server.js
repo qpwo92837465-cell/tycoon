@@ -60,7 +60,6 @@ const VENDING_ITEMS = [
   { id: 'bait_gold', name: '황금 새우 미끼 (고급 확률 +18%)', cost: 30000, type: 'bait', bonus: 18 }
 ];
 
-// 30종 물고기 (확률 밸런스 조정)
 const FISH_ITEMS = [
   { id: 'f_01', name: '피라미', grade: '일반', value: 1200, weight: 45 },
   { id: 'f_02', name: '붕어', grade: '일반', value: 2000, weight: 35 },
@@ -94,18 +93,36 @@ const FISH_ITEMS = [
   { id: 'f_30', name: '세계관을 삼킨 태초의 리바이아산', grade: '초월', value: 120000000, weight: 0.0003 }
 ];
 
-// 실제 주식 데이터 연동 (삼성전자, 테슬라, 애플, 비트코인 등 실시간 등락 모사)
+// 📈 유명 국내외 주식 및 코인 총 22개 종목
 let STOCKS = [
   { symbol: '005930', name: '삼성전자', price: 72000, min: 40000, max: 150000 },
-  { symbol: 'TSLA', name: '테슬라 (TSLA)', nameEn: 'Tesla', price: 310000, min: 100000, max: 800000 },
-  { symbol: 'AAPL', name: '애플 (AAPL)', nameEn: 'Apple', price: 230000, min: 120000, max: 500000 },
-  { symbol: 'BTC', name: '비트코인 (BTC)', nameEn: 'Bitcoin', price: 125000000, min: 30000000, max: 300000000 }
+  { symbol: '000660', name: 'SK하이닉스', price: 175000, min: 80000, max: 350000 },
+  { symbol: '035420', name: 'NAVER (네이버)', price: 195000, min: 100000, max: 400000 },
+  { symbol: '035720', name: '카카오', price: 51000, min: 30000, max: 150000 },
+  { symbol: '373220', name: 'LG에너지솔루션', price: 380000, min: 200000, max: 700000 },
+  { symbol: '005380', name: '현대차', price: 240000, min: 130000, max: 450000 },
+  { symbol: '028260', name: '삼성물산', price: 145000, min: 90000, max: 250000 },
+  { symbol: '051910', name: 'LG화학', price: 320000, min: 180000, max: 700000 },
+  { symbol: 'AAPL', name: '애플 (Apple)', price: 230000, min: 120000, max: 500000 },
+  { symbol: 'MSFT', name: '마이크로소프트 (MS)', price: 540000, min: 300000, max: 900000 },
+  { symbol: 'TSLA', name: '테슬라 (Tesla)', price: 310000, min: 100000, max: 800000 },
+  { symbol: 'NVDA', name: '엔비디아 (NVIDIA)', price: 1350000, min: 500000, max: 3000000 },
+  { symbol: 'GOOGL', name: '알파벳 (구글)', price: 210000, min: 120000, max: 450000 },
+  { symbol: 'AMZN', name: '아마존 (Amazon)', price: 260000, min: 140000, max: 500000 },
+  { symbol: 'META', name: '메타 (Meta)', price: 680000, min: 300000, max: 1200000 },
+  { symbol: 'NFLX', name: '넷플릭스 (Netflix)', price: 920000, min: 400000, max: 1800000 },
+  { symbol: 'DIS', name: '월트 디즈니 (Disney)', price: 140000, min: 80000, max: 250000 },
+  { symbol: 'COIN', name: '코인베이스 (Coinbase)', price: 340000, min: 100000, max: 900000 },
+  { symbol: 'BTC', name: '비트코인 (Bitcoin)', price: 125000000, min: 30000000, max: 300000000 },
+  { symbol: 'ETH', name: '이더리움 (Ethereum)', price: 4800000, min: 1500000, max: 12000000 },
+  { symbol: 'SOL', name: '솔라나 (Solana)', price: 210000, min: 50000, max: 800000 },
+  { symbol: 'DOGE', name: '도지코인 (Dogecoin)', price: 220, min: 50, max: 2000 }
 ];
 
-// 3초마다 주식 가격이 실제로 출렁이도록 구현
+// 3초마다 주식/코인 가격 실시간 변동
 setInterval(() => {
   STOCKS.forEach(s => {
-    const percentChange = (Math.random() * 0.1 - 0.048); // -4.8% ~ +5.2% 변동
+    const percentChange = (Math.random() * 0.12 - 0.057); // -5.7% ~ +6.3% 변동
     s.price = Math.max(s.min, Math.min(s.max, Math.round(s.price * (1 + percentChange))));
   });
   io.emit('stocks:update', STOCKS);
@@ -220,7 +237,6 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `🎉 승진 축하합니다! [${nextJob.name}] 진급!` });
   });
 
-  // 🎣 미끼 등급에 따라 고급 물고기 확률이 미끼당 +6%씩 정밀 보정되는 낚시 시스템
   socket.on('fish:catch', async () => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
@@ -228,19 +244,17 @@ io.on('connection', (socket) => {
 
     u.hunger -= 5;
     const rodLevel = (u.upgrades && u.upgrades.fishingRod) || 1;
-    
-    let baitBonus = 0; // 퍼센트 보정치
+    let baitBonus = 0;
     if (u.inventory) {
       if (u.inventory['bait_gold'] && u.inventory['bait_gold'] > 0) {
         u.inventory['bait_gold']--;
-        baitBonus = 18; // 황금 새우 미끼 (+18% 확률 보정)
+        baitBonus = 18;
       } else if (u.inventory['bait_normal'] && u.inventory['bait_normal'] > 0) {
         u.inventory['bait_normal']--;
-        baitBonus = 6;  // 지렁이 미끼 (+6% 확률 보정)
+        baitBonus = 6;
       }
     }
 
-    // 미끼 보너스가 높을수록 고급 이상 물고기들의 가중치에 직접 가산
     const adjustedFishList = FISH_ITEMS.map(f => {
       let w = f.weight;
       if (['고급', '희귀', '영웅', '전설', '신화', '초월'].includes(f.grade)) {
@@ -396,7 +410,7 @@ io.on('connection', (socket) => {
       else { msg = '딜러 승리'; }
 
       u.money += reward; await saveUser(u); await syncUser();
-      socket.emit('casino:bj:result', { win: reward > bj.bet, pHand: bj.pHand, dHand: bj.dHand, pScore: 21, dScore, reward, msg });
+      socket.emit('casino:blackjack:result', { win: reward > bj.bet, pHand: bj.pHand, dHand: bj.dHand, pScore: 21, dScore, reward, msg });
       delete socket.data.bj;
     } else {
       socket.emit('casino:bj:state', { pHand: bj.pHand, dHand: [bj.dHand[0], { suit: '?', val: '?' }], pScore: score, dScore: '?' });
@@ -493,4 +507,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 실시간 주식 및 미끼 확률 보정 버전 실행됨 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 유명 주식 22개 종목 실시간 변동 버전 실행됨 (포트: ${PORT})`));
