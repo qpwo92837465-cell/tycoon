@@ -93,7 +93,6 @@ const FISH_ITEMS = [
   { id: 'f_30', name: '세계관을 삼킨 태초의 리바이아산', grade: '초월', value: 120000000, weight: 0.0003 }
 ];
 
-// 실제 주식 시장처럼 소폭(-1.5% ~ +1.5%) 현실감 있게 등락하는 주식 리스트
 let STOCKS = [
   { symbol: '005930', name: '삼성전자', price: 72000 },
   { symbol: '000660', name: 'SK하이닉스', price: 175000 },
@@ -119,10 +118,9 @@ let STOCKS = [
   { symbol: 'DOGE', name: '도지코인 (Dogecoin)', price: 220 }
 ];
 
-// 실제 주식처럼 3초마다 아주 미세하고 부드럽게 등락 (-1.5% ~ +1.5%)
 setInterval(() => {
   STOCKS.forEach(s => {
-    const changePercent = (Math.random() * 0.03) - 0.0145; // -1.45% ~ +1.55%
+    const changePercent = (Math.random() * 0.03) - 0.0145;
     let newPrice = Math.round(s.price * (1 + changePercent));
     if (newPrice < 100) newPrice = 100;
     s.price = newPrice;
@@ -239,7 +237,6 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `🎉 승진 축하합니다! [${nextJob.name}] 진급!` });
   });
 
-  // 🎣 선택한 미끼를 소모하며 확률 보정 적용하는 낚시 핸들러
   socket.on('fish:catch', async ({ selectedBait }) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
@@ -308,16 +305,19 @@ io.on('connection', (socket) => {
     await saveUser(u); await syncUser();
   });
 
-  socket.on('vending:buy', async (itemId) => {
-    if (!currentUser) return;
+  // [수정] 1개 및 10개씩 대량 구매 처리 핸들러
+  socket.on('vending:buy', async ({ itemId, count }) => {
+    if (!currentUser || !count || count <= 0) return;
     const u = await getUserByUsername(currentUser);
     const item = VENDING_ITEMS.find(v => v.id === itemId);
-    if (!item || u.money < item.cost) return socket.emit('notify', { success: false, msg: '잔액 부족' });
-    u.money -= item.cost;
+    const totalCost = item.cost * count;
+
+    if (!item || u.money < totalCost) return socket.emit('notify', { success: false, msg: '잔액 부족' });
+    u.money -= totalCost;
     if (!u.inventory) u.inventory = {};
-    u.inventory[itemId] = (u.inventory[itemId] || 0) + 1;
+    u.inventory[itemId] = (u.inventory[itemId] || 0) + count;
     await saveUser(u); await syncUser();
-    socket.emit('notify', { success: true, msg: `${item.name} 구매 완료` });
+    socket.emit('notify', { success: true, msg: `${item.name} ${count}개 구매 완료!` });
   });
 
   socket.on('inventory:use', async (itemId) => {
@@ -512,4 +512,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 실제 주식 시세 연동 및 미끼 선택 낚시 완료 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 편의점 10개씩 대량 구매 기능 추가 완료 (포트: ${PORT})`));
