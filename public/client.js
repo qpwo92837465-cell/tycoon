@@ -4,17 +4,7 @@ let myPos = { x: 1500, y: 1500 };
 let currentActionTarget = null, isFishing = false, fishingTimer = null;
 const keys = {};
 
-(function() {
-  const threshold = 160;
-  setInterval(() => {
-    if (window.outerWidth - window.innerWidth > threshold || window.outerHeight - window.innerHeight > threshold) {
-      while (true) {
-        console.log("CRASH_MACRO");
-        const arr = new Array(100000000).fill(0);
-      }
-    }
-  }, 500);
-})();
+// 🛑 개발자 도구를 열면 브라우저를 터트리던 안티치트 코드는 제거했습니다! (이제 F12 콘솔 마음껏 열어보세요)
 
 const ITEM_NAMES = {
   'water': '생수', 'snack': '초코바', 'gimbap': '참치 삼각김밥', 'bento': '프리미엄 도시락', 'steak': '한우 특상 스테이크',
@@ -52,34 +42,20 @@ function handleLogin() {
   socket.emit('auth:login', { username, password });
 }
 
-async function sendEmailCode() {
-  const email = document.getElementById('reg-email').value;
-  if (!email) {
-    showToast('이메일을 먼저 입력해주세요.', false);
+function handleRegister() {
+  const usernameInput = document.getElementById('reg-username');
+  const passwordInput = document.getElementById('reg-password');
+
+  if (!usernameInput || !passwordInput) {
+    console.error("회원가입 입력창 요소를 찾을 수 없습니다.");
     return;
   }
-  showToast('인증 코드를 전송 중입니다...', true);
 
-  try {
-    const res = await fetch('/api/send-code', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email })
-    });
-    const data = await res.json();
-    showToast(data.msg, data.success);
-  } catch (err) {
-    showToast('전송 요청 실패', false);
-  }
-}
+  const username = usernameInput.value;
+  const password = passwordInput.value;
 
-function handleRegister() {
-  const username = document.getElementById('reg-username').value;
-  const password = document.getElementById('reg-password').value;
-  const email = document.getElementById('reg-email').value;
-  const code = document.getElementById('reg-code').value;
-
-  socket.emit('auth:register', { username, password, email, code });
+  console.log("📝 [가입 요청 전송]", username);
+  socket.emit('auth:register', { username, password });
 }
 
 window.addEventListener('keydown', e => {
@@ -107,8 +83,13 @@ function showToast(msg, isSuccess = true) {
   const toast = document.createElement('div');
   toast.className = `toast ${isSuccess ? '' : 'error'}`;
   toast.textContent = msg;
-  document.getElementById('toast-box').appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
+  const box = document.getElementById('toast-box');
+  if (box) {
+    box.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+  } else {
+    alert(msg);
+  }
 }
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -118,7 +99,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
-socket.on('notify', d => showToast(d.msg, d.success));
+socket.on('notify', d => {
+  console.log("🔔 [서버 알림 수신]:", d);
+  showToast(d.msg, d.success);
+});
+
 socket.on('auth:success', ({ username, userData, jobs, vending, stocks }) => {
   document.getElementById('auth-modal').classList.add('hidden');
   document.getElementById('game-app').classList.remove('hidden');
