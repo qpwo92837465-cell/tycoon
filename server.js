@@ -16,28 +16,30 @@ const PORT = process.env.PORT || 3000;
 
 async function getUserByUsername(username) {
   const { data, error } = await supabase.from('users').select('*').eq('username', username).maybeSingle();
-  if (error) console.error('[DB ERROR] getUserByUsername:', error.message);
+  if (error) {
+    console.error('[DB SELECT ERROR]:', error.message);
+  }
   return data;
 }
 
-// 회원가입 및 데이터 저장이 안전하게 되도록 다듬은 함수
 async function saveUser(userObj) {
   const payload = {
     username: userObj.username,
-    passwordhash: userObj.passwordhash || userObj.password,
+    passwordhash: userObj.passwordhash || userObj.password || '1234',
     money: Number(userObj.money) || 200000,
-    jobindex: Number(userObj.jobindex !== undefined ? userObj.jobindex : userObj.jobIndex) || 0,
-    hunger: Number(userObj.hunger) || 100,
-    maxhunger: Number(userObj.maxhunger || userObj.maxHunger || 100),
+    jobindex: Number(userObj.jobindex || 0),
+    hunger: Number(userObj.hunger || 100),
+    maxhunger: Number(userObj.maxhunger || 100),
     isadmin: !!userObj.isadmin,
     stocks: userObj.stocks || {},
     inventory: userObj.inventory || {},
     upgrades: userObj.upgrades || { fishingRod: 1, stomach: 1 }
   };
   
-  const { error } = await supabase.from('users').upsert([payload], { onConflict: 'username' });
+  // Supabase upsert 시도 및 에러 상세 콘솔 출력
+  const { data, error } = await supabase.from('users').upsert([payload], { onConflict: 'username' });
   if (error) {
-    console.error('[DB ERROR] saveUser failed:', error.message);
+    console.error('🚨 [DB SAVE CRITICAL ERROR] 상세 내용:', error);
     return false;
   }
   return true;
@@ -136,29 +138,6 @@ setInterval(() => {
   io.emit('stocks:update', STOCKS);
 }, 3000);
 
-setInterval(async () => {
-  for (let socketId in onlinePlayers) {
-    const pInfo = onlinePlayers[socketId];
-    if (!pInfo || !pInfo.username) continue;
-
-    const u = await getUserByUsername(pInfo.username);
-    if (!u) continue;
-
-    const job = JOBS[u.jobindex] || JOBS[0];
-    if (u.hunger > 0 && job.salary > 0) {
-      u.money += job.salary;
-      u.hunger = Math.max(0, u.hunger - job.workEnergyCost);
-      await saveUser(u);
-
-      io.to(socketId).emit('player:sync', {
-        username: u.username, money: u.money, jobIndex: u.jobindex,
-        hunger: u.hunger, maxHunger: u.maxhunger || 100, isAdmin: u.isadmin,
-        inventory: u.inventory || {}, stocks: u.stocks || {}, upgrades: u.upgrades || { fishingRod: 1, stomach: 1 }
-      });
-    }
-  }
-}, 90000);
-
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
@@ -184,11 +163,12 @@ io.on('connection', (socket) => {
     if (!username || username.trim().length < 2) return socket.emit('notify', { success: false, msg: '아이디는 2자 이상 입력해주세요.' });
     if (!password || password.trim().length < 2) return socket.emit('notify', { success: false, msg: '비밀번호를 입력해주세요.' });
     
-    const existing = await getUserByUsername(username.trim());
+    const cleanName = username.trim();
+    const existing = await getUserByUsername(cleanName);
     if (existing) return socket.emit('notify', { success: false, msg: '이미 존재하는 아이디입니다.' });
 
     const success = await saveUser({
-      username: username.trim(),
+      username: cleanName,
       passwordhash: password,
       money: 200000,
       jobindex: 0,
@@ -203,25 +183,26 @@ io.on('connection', (socket) => {
     if (success) {
       socket.emit('notify', { success: true, msg: '가입 완료! 로그인해주세요.' });
     } else {
-      socket.emit('notify', { success: false, msg: '데이터베이스 저장 실패 (서버 로그 확인)' });
+      socket.emit('notify', { success: false, msg: '회원가입 실패 (서버 콘솔 에러 확인)' });
     }
   });
 
   socket.on('auth:login', async ({ username, password }) => {
     if (!username || !password) return socket.emit('notify', { success: false, msg: '아이디와 비밀번호를 입력해주세요.' });
     
-    const u = await getUserByUsername(username.trim());
-    if (!u || u.passwordhash !== password) return socket.emit('notify', { success: false, msg: '로그인 실패 (아이디 또는 비밀번호 오류)' });
+    const cleanName = username.trim();
+    const u = await getUserByUsername(cleanName);
+    if (!u || u.passwordhash !== password) return socket.emit('notify', { success: false, msg: '로그인 실패 (아이디/비번 오류 또는 밴 계정)' });
     
     for (let id in onlinePlayers) {
-      if (onlinePlayers[id].username === username) delete onlinePlayers[id];
+      if (onlinePlayers[id].username === cleanName) delete onlinePlayers[id];
     }
 
-    currentUser = username.trim();
+    currentUser = cleanName;
     onlinePlayers[socket.id] = { username: u.username, x: 1500, y: 1500, avatarColor: '#' + Math.floor(Math.random()*16777215).toString(16) };
 
     socket.emit('auth:success', {
-      username,
+      username: cleanName,
       userData: { 
         username: u.username, money: u.money, jobIndex: u.jobindex, 
         hunger: u.hunger, maxHunger: u.maxhunger || 100, isAdmin: u.isadmin, 
@@ -253,7 +234,6 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `🎉 승진 축하합니다! [${nextJob.name}] 진급!` });
   });
 
-  // 🎣 매크로 방어 및 오토밴 로직 포함된 낚시 핸들러
   socket.on('fish:catch', async (data) => {
     if (!currentUser) return;
 
@@ -288,7 +268,7 @@ io.on('connection', (socket) => {
         u.passwordhash = '밴먹은계정';
         await saveUser(u);
       }
-      socket.emit('notify', { success: false, msg: '🚨 매크로 프로그램 사용이 3회 감지되어 계정이 영구 정지되었습니다!' });
+      socket.emit('notify', { success: false, msg: '🚨 매크로 감지 3회 누적로 계정이 정지되었습니다!' });
       setTimeout(() => socket.disconnect(), 1000);
       return;
     }
@@ -437,4 +417,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 회원가입 오류 수정 및 오토밴 시스템 가동 완료 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 회원가입 디버깅 버전 실행됨 (포트: ${PORT})`));
