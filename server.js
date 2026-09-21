@@ -20,14 +20,15 @@ async function getUserByUsername(username) {
   return data;
 }
 
+// 회원가입 및 데이터 저장이 안전하게 되도록 다듬은 함수
 async function saveUser(userObj) {
   const payload = {
     username: userObj.username,
-    passwordhash: userObj.password || userObj.passwordhash || userObj.passwordHash,
-    money: Number(userObj.money) || 0,
-    jobindex: Number(userObj.jobIndex !== undefined ? userObj.jobIndex : userObj.jobindex) || 0,
+    passwordhash: userObj.passwordhash || userObj.password,
+    money: Number(userObj.money) || 200000,
+    jobindex: Number(userObj.jobindex !== undefined ? userObj.jobindex : userObj.jobIndex) || 0,
     hunger: Number(userObj.hunger) || 100,
-    maxhunger: Number(userObj.maxHunger || userObj.maxhunger || 100),
+    maxhunger: Number(userObj.maxhunger || userObj.maxHunger || 100),
     isadmin: !!userObj.isadmin,
     stocks: userObj.stocks || {},
     inventory: userObj.inventory || {},
@@ -35,7 +36,11 @@ async function saveUser(userObj) {
   };
   
   const { error } = await supabase.from('users').upsert([payload], { onConflict: 'username' });
-  if (error) console.error('[DB ERROR] saveUser failed:', error.message);
+  if (error) {
+    console.error('[DB ERROR] saveUser failed:', error.message);
+    return false;
+  }
+  return true;
 }
 
 const JOBS = [
@@ -86,7 +91,7 @@ const FISH_ITEMS = [
   { id: 'f_20', name: '범고래', grade: '영웅', value: 160000, weight: 0.2 },
   { id: 'f_21', name: '황금 상어', grade: '전설', value: 250000, weight: 0.12 },
   { id: 'f_22', name: '실러캔스', grade: '전설', value: 350000, weight: 0.08 },
-  { id: 'f_23', name: '네스호 고대 괴수', grade: '전설', value: 500000, weight: 0.05 },
+  { id: 'f_23', name: '네ส호 고대 괴수', grade: '전설', value: 500000, weight: 0.05 },
   { id: 'f_24', name: '크라켄(새끼)', grade: '전설', value: 750000, weight: 0.03 },
   { id: 'f_25', name: '포세이돈의 수호 잉어', grade: '신화', value: 1200000, weight: 0.015 },
   { id: 'f_26', name: '황금 고래왕', grade: '신화', value: 1800000, weight: 0.008 },
@@ -94,7 +99,6 @@ const FISH_ITEMS = [
   { id: 'f_28', name: '우주 심해의 별빛 고래', grade: '초월', value: 5000000, weight: 0.002 },
   { id: 'f_29', name: '차원 개척자의 환수', grade: '초월', value: 9000000, weight: 0.001 },
   { id: 'f_30', name: '세계관을 삼킨 태초의 리바이아산', grade: '초월', value: 20000000, weight: 0.0003 }
-];
 ];
 
 let STOCKS = [
@@ -159,23 +163,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
 const onlinePlayers = {};
-
-function getDeck() {
-  const suits = ['♠', '♥', '♦', '♣'], values = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
-  let deck = [];
-  for(let s of suits) for(let v of values) deck.push({ suit: s, val: v });
-  return deck.sort(() => Math.random() - 0.5);
-}
-function calcBJ(hand) {
-  let sum = 0, aces = 0;
-  hand.forEach(c => {
-    if(c.val === 'A') { aces++; sum += 11; }
-    else if(['J','Q','K'].includes(c.val)) sum += 10;
-    else sum += parseInt(c.val);
-  });
-  while(sum > 21 && aces > 0) { sum -= 10; aces--; }
-  return sum;
-}
+const macroDetectors = {};
 
 io.on('connection', (socket) => {
   let currentUser = null;
@@ -195,21 +183,41 @@ io.on('connection', (socket) => {
   socket.on('auth:register', async ({ username, password }) => {
     if (!username || username.trim().length < 2) return socket.emit('notify', { success: false, msg: '아이디는 2자 이상 입력해주세요.' });
     if (!password || password.trim().length < 2) return socket.emit('notify', { success: false, msg: '비밀번호를 입력해주세요.' });
-    if (await getUserByUsername(username)) return socket.emit('notify', { success: false, msg: '이미 존재하는 아이디입니다.' });
+    
+    const existing = await getUserByUsername(username.trim());
+    if (existing) return socket.emit('notify', { success: false, msg: '이미 존재하는 아이디입니다.' });
 
-    await saveUser({ username, password, money: 200000, jobIndex: 0, hunger: 100, maxHunger: 100, isAdmin: false, inventory: {}, stocks: {}, upgrades: { fishingRod: 1, stomach: 1 } });
-    socket.emit('notify', { success: true, msg: '가입 완료! 로그인해주세요.' });
+    const success = await saveUser({
+      username: username.trim(),
+      passwordhash: password,
+      money: 200000,
+      jobindex: 0,
+      hunger: 100,
+      maxhunger: 100,
+      isadmin: false,
+      inventory: {},
+      stocks: {},
+      upgrades: { fishingRod: 1, stomach: 1 }
+    });
+
+    if (success) {
+      socket.emit('notify', { success: true, msg: '가입 완료! 로그인해주세요.' });
+    } else {
+      socket.emit('notify', { success: false, msg: '데이터베이스 저장 실패 (서버 로그 확인)' });
+    }
   });
 
   socket.on('auth:login', async ({ username, password }) => {
-    const u = await getUserByUsername(username);
-    if (!u || u.passwordhash !== password) return socket.emit('notify', { success: false, msg: '로그인 실패' });
+    if (!username || !password) return socket.emit('notify', { success: false, msg: '아이디와 비밀번호를 입력해주세요.' });
+    
+    const u = await getUserByUsername(username.trim());
+    if (!u || u.passwordhash !== password) return socket.emit('notify', { success: false, msg: '로그인 실패 (아이디 또는 비밀번호 오류)' });
     
     for (let id in onlinePlayers) {
       if (onlinePlayers[id].username === username) delete onlinePlayers[id];
     }
 
-    currentUser = username;
+    currentUser = username.trim();
     onlinePlayers[socket.id] = { username: u.username, x: 1500, y: 1500, avatarColor: '#' + Math.floor(Math.random()*16777215).toString(16) };
 
     socket.emit('auth:success', {
@@ -245,8 +253,46 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `🎉 승진 축하합니다! [${nextJob.name}] 진급!` });
   });
 
+  // 🎣 매크로 방어 및 오토밴 로직 포함된 낚시 핸들러
   socket.on('fish:catch', async (data) => {
     if (!currentUser) return;
+
+    const now = Date.now();
+    if (!macroDetectors[currentUser]) {
+      macroDetectors[currentUser] = { lastTime: now, intervals: [], macroStrike: 0 };
+    }
+
+    const tracker = macroDetectors[currentUser];
+    const diff = now - tracker.lastTime;
+    tracker.lastTime = now;
+
+    if (diff < 4000) {
+      return socket.emit('notify', { success: false, msg: '⚠️ 너무 빠르게 낚싯대를 던질 수 없습니다!' });
+    }
+
+    tracker.intervals.push(diff);
+    if (tracker.intervals.length > 4) tracker.intervals.shift();
+
+    if (tracker.intervals.length === 4) {
+      const avg = tracker.intervals.reduce((a, b) => a + b, 0) / tracker.intervals.length;
+      const variance = tracker.intervals.reduce((a, b) => a + Math.abs(b - avg), 0) / tracker.intervals.length;
+
+      if (variance < 10) {
+        tracker.macroStrike++;
+      }
+    }
+
+    if (tracker.macroStrike >= 3) {
+      const u = await getUserByUsername(currentUser);
+      if (u) {
+        u.passwordhash = '밴먹은계정';
+        await saveUser(u);
+      }
+      socket.emit('notify', { success: false, msg: '🚨 매크로 프로그램 사용이 3회 감지되어 계정이 영구 정지되었습니다!' });
+      setTimeout(() => socket.disconnect(), 1000);
+      return;
+    }
+
     const u = await getUserByUsername(currentUser);
     if (!u) return;
     if (u.hunger < 5) return socket.emit('notify', { success: false, msg: '배가 고파서 낚시를 할 수 없습니다!' });
@@ -391,4 +437,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 이메일 인증 제거 및 인벤토리 정상화 완료 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 회원가입 오류 수정 및 오토밴 시스템 가동 완료 (포트: ${PORT})`));
