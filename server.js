@@ -22,7 +22,7 @@ async function getUserByUsername(username) {
   return data;
 }
 
-// 회원가입 및 데이터 저장을 확실하게 처리하는 함수
+// 에러 메시지를 문자열로 리턴하도록 수정된 함수
 async function saveUser(userObj) {
   const payload = {
     username: String(userObj.username),
@@ -39,10 +39,10 @@ async function saveUser(userObj) {
   
   const { error } = await supabase.from('users').upsert([payload], { onConflict: 'username' });
   if (error) {
-    console.error('🚨 [DB SAVE ERROR 상세]:', error.message);
-    return false;
+    console.error('🚨 [DB SAVE ERROR 상세]:', error);
+    return error.message; // Supabase가 준 에러 텍스트 반환
   }
-  return true;
+  return null; // 성공 시 에러 없음
 }
 
 const JOBS = [
@@ -167,7 +167,7 @@ io.on('connection', (socket) => {
     const existing = await getUserByUsername(cleanName);
     if (existing) return socket.emit('notify', { success: false, msg: '이미 존재하는 아이디입니다.' });
 
-    const success = await saveUser({
+    const saveError = await saveUser({
       username: cleanName,
       passwordhash: password,
       money: 200000,
@@ -180,10 +180,11 @@ io.on('connection', (socket) => {
       upgrades: { fishingRod: 1, stomach: 1 }
     });
 
-    if (success) {
+    if (!saveError) {
       socket.emit('notify', { success: true, msg: '가입 완료! 로그인해주세요.' });
     } else {
-      socket.emit('notify', { success: false, msg: '회원가입 실패 (서버 콘솔 에러 확인)' });
+      // 🚨 Supabase가 뱉은 실제 에러 사유를 게임 화면에 그대로 띄워줌
+      socket.emit('notify', { success: false, msg: '가입 실패: ' + saveError });
     }
   });
 
@@ -234,7 +235,7 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `🎉 승진 축하합니다! [${nextJob.name}] 진급!` });
   });
 
-  // 🎣 안티치트 & 오토밴 적용된 낚시 핸들러
+  // 🎣 안티치트 낚시 핸들러
   socket.on('fish:catch', async (data) => {
     if (!currentUser) return;
 
@@ -273,7 +274,7 @@ io.on('connection', (socket) => {
         u.passwordhash = '밴먹은계정';
         await saveUser(u);
       }
-      socket.emit('notify', { success: false, msg: '🚨 매크로 프로그램 사용이 3회 감지되어 계정이 영구 정지되었습니다!' });
+      socket.emit('notify', { success: false, msg: '🚨 매크로 감지 3회 누적으로 계정이 정지되었습니다!' });
       setTimeout(() => socket.disconnect(), 500);
       return;
     }
@@ -422,4 +423,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 회원가입 오류 완전 해결 및 안티치트 가동 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 회원가입 에러 디버깅 모드 실행됨 (포트: ${PORT})`));
