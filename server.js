@@ -16,9 +16,7 @@ const PORT = process.env.PORT || 3000;
 
 async function getUserByUsername(username) {
   const { data, error } = await supabase.from('users').select('*').eq('username', username).maybeSingle();
-  if (error) {
-    console.error('[DB SELECT ERROR]:', error.message);
-  }
+  if (error) console.error('[DB SELECT ERROR]:', error.message);
   return data;
 }
 
@@ -92,7 +90,7 @@ const FISH_ITEMS = [
   { id: 'f_20', name: '범고래', grade: '영웅', value: 160000, weight: 0.2 },
   { id: 'f_21', name: '황금 상어', grade: '전설', value: 250000, weight: 0.12 },
   { id: 'f_22', name: '실러캔스', grade: '전설', value: 350000, weight: 0.08 },
-  { id: 'f_23', name: '네ส호 고대 괴수', grade: '전설', value: 500000, weight: 0.05 },
+  { id: 'f_23', name: '네스호 고대 괴수', grade: '전설', value: 500000, weight: 0.05 },
   { id: 'f_24', name: '크라켄(새끼)', grade: '전설', value: 750000, weight: 0.03 },
   { id: 'f_25', name: '포세이돈의 수호 잉어', grade: '신화', value: 1200000, weight: 0.015 },
   { id: 'f_26', name: '황금 고래왕', grade: '신화', value: 1800000, weight: 0.008 },
@@ -102,7 +100,6 @@ const FISH_ITEMS = [
   { id: 'f_30', name: '세계관을 삼킨 태초의 리바이아산', grade: '초월', value: 20000000, weight: 0.0003 }
 ];
 
-// ⛏️ 광석 데이터 (기본 광석 1,000원 ~ 최고급 광석 1억 원, 최고급 확률 정확히 0.676767%)
 const ORE_ITEMS = [
   { id: 'ore_01', name: '석탄', grade: '일반', value: 1000, weight: 45 },
   { id: 'ore_02', name: '철광석', grade: '일반', value: 2500, weight: 30 },
@@ -119,7 +116,7 @@ const ORE_ITEMS = [
   { id: 'ore_13', name: '흑진주', grade: '전설', value: 6000000, weight: 0.3 },
   { id: 'ore_14', name: '미스릴', grade: '전설', value: 15000000, weight: 0.15 },
   { id: 'ore_15', name: '아다만티움', grade: '신화', value: 40000000, weight: 0.05 },
-  { id: 'ore_16', name: '우주 심장 핵 (최고급)', grade: '초월', value: 100000000, weight: 0.00676767 } // 0.676767% 맞춤
+  { id: 'ore_16', name: '우주 심장 핵 (최고급)', grade: '초월', value: 100000000, weight: 0.00676767 } // 0.676767% 확률
 ];
 
 let STOCKS = [
@@ -276,7 +273,7 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `🎉 승진 축하합니다! [${nextJob.name}] 진급!` });
   });
 
-  // 🎣 낚시 핸들러 (안티치트 적용)
+  // 🎣 낚시 (포만감 10 소모 + 안티치트)
   socket.on('fish:catch', async (data) => {
     if (!currentUser) return;
 
@@ -311,9 +308,9 @@ io.on('connection', (socket) => {
 
     const u = await getUserByUsername(currentUser);
     if (!u) return;
-    if (u.hunger < 5) return socket.emit('notify', { success: false, msg: '배가 고파서 낚시를 할 수 없습니다!' });
+    if (u.hunger < 10) return socket.emit('notify', { success: false, msg: '배가 고파서 낚시를 할 수 없습니다! (포만감 부족)' });
 
-    u.hunger -= 5;
+    u.hunger -= 10;
     const selectedBait = data && data.selectedBait ? data.selectedBait : 'none';
     let baitBonus = 0;
 
@@ -350,7 +347,7 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `🎣 [낚시 성공] [${caught.grade}] ${caught.name} 획득!` });
   });
 
-  // ⛏️ 광산 채광 핸들러 (요청하신 광석 시스템 및 매크로 방어)
+  // ⛏️ 광산 채광 (포만감 10 소모 + 안티치트)
   socket.on('mine:dig', async () => {
     if (!currentUser) return;
 
@@ -385,13 +382,12 @@ io.on('connection', (socket) => {
 
     const u = await getUserByUsername(currentUser);
     if (!u) return;
-    if (u.hunger < 5) return socket.emit('notify', { success: false, msg: '배가 고파서 광산 작업을 할 수 없습니다!' });
+    if (u.hunger < 10) return socket.emit('notify', { success: false, msg: '배가 고파서 광산 작업을 할 수 없습니다! (포만감 부족)' });
 
-    u.hunger -= 5;
+    u.hunger -= 10;
     if (!u.upgrades) u.upgrades = { fishingRod: 1, pickaxe: 1, stomach: 1 };
     const pickaxeLv = u.upgrades.pickaxe || 1;
 
-    // 곡괭이 레벨에 따른 고급 광석 가중치 보너스
     const adjustedOreList = ORE_ITEMS.map(o => {
       let w = o.weight;
       if (['고급', '희귀', '영웅', '전설', '신화', '초월'].includes(o.grade)) {
@@ -418,7 +414,7 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `⛏️ [채광 성공] [${mined.grade}] ${mined.name} 획득!` });
   });
 
-  // ⚡ 업그레이드 핸들러 (요청하신 곡괭이 비용 구조 적용: 100만 → 500만 → 1000만 → 3000만 → 6000만 → 1억 → 5억 → 100억)
+  // ⚡ 곡괭이 강화 비용 구조 (100만 → 500만 → 1000만 → 3000만 → 6000만 → 1억 → 5억 → 100억)
   socket.on('upgrade:buy', async (type) => {
     if (!currentUser) return;
     const u = await getUserByUsername(currentUser);
@@ -431,7 +427,7 @@ io.on('connection', (socket) => {
       const curLv = u.upgrades.pickaxe || 1;
       if (curLv >= PICKAXE_COSTS.length) return socket.emit('notify', { success: false, msg: '곡괭이가 이미 최고 레벨입니다.' });
       const cost = PICKAXE_COSTS[curLv];
-      if (u.money < cost) return socket.emit('notify', { success: false, msg: `곡괭이 업그레이드 비용 부족 (필요: ₩${cost.toLocaleString()})` });
+      if (u.money < cost) return socket.emit('notify', { success: false, msg: `곡괭이 강화 비용 부족 (필요: ₩${cost.toLocaleString()})` });
 
       u.money -= cost;
       u.upgrades.pickaxe++;
@@ -533,4 +529,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 광산 시스템 및 안티치트 서버 가동 완료 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 광산 및 안티치트 시스템 가동 완료 (포트: ${PORT})`));
