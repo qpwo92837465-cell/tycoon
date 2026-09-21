@@ -22,24 +22,24 @@ async function getUserByUsername(username) {
   return data;
 }
 
+// 회원가입 및 데이터 저장을 확실하게 처리하는 함수
 async function saveUser(userObj) {
   const payload = {
-    username: userObj.username,
-    passwordhash: userObj.passwordhash || userObj.password || '1234',
+    username: String(userObj.username),
+    passwordhash: String(userObj.passwordhash),
     money: Number(userObj.money) || 200000,
-    jobindex: Number(userObj.jobindex || 0),
-    hunger: Number(userObj.hunger || 100),
-    maxhunger: Number(userObj.maxhunger || 100),
-    isadmin: !!userObj.isadmin,
+    jobindex: Number(userObj.jobindex) || 0,
+    hunger: Number(userObj.hunger) || 100,
+    maxhunger: Number(userObj.maxhunger) || 100,
+    isadmin: Boolean(userObj.isadmin),
     stocks: userObj.stocks || {},
     inventory: userObj.inventory || {},
     upgrades: userObj.upgrades || { fishingRod: 1, stomach: 1 }
   };
   
-  // Supabase upsert 시도 및 에러 상세 콘솔 출력
-  const { data, error } = await supabase.from('users').upsert([payload], { onConflict: 'username' });
+  const { error } = await supabase.from('users').upsert([payload], { onConflict: 'username' });
   if (error) {
-    console.error('🚨 [DB SAVE CRITICAL ERROR] 상세 내용:', error);
+    console.error('🚨 [DB SAVE ERROR 상세]:', error.message);
     return false;
   }
   return true;
@@ -234,33 +234,38 @@ io.on('connection', (socket) => {
     socket.emit('notify', { success: true, msg: `🎉 승진 축하합니다! [${nextJob.name}] 진급!` });
   });
 
+  // 🎣 안티치트 & 오토밴 적용된 낚시 핸들러
   socket.on('fish:catch', async (data) => {
     if (!currentUser) return;
 
     const now = Date.now();
     if (!macroDetectors[currentUser]) {
-      macroDetectors[currentUser] = { lastTime: now, intervals: [], macroStrike: 0 };
+      macroDetectors[currentUser] = { lastTime: 0, intervals: [], macroStrike: 0 };
     }
 
     const tracker = macroDetectors[currentUser];
-    const diff = now - tracker.lastTime;
-    tracker.lastTime = now;
+    
+    if (tracker.lastTime > 0) {
+      const diff = now - tracker.lastTime;
+      
+      if (diff < 4000) {
+        return socket.emit('notify', { success: false, msg: '⚠️ 너무 빠르게 낚싯대를 던질 수 없습니다!' });
+      }
 
-    if (diff < 4000) {
-      return socket.emit('notify', { success: false, msg: '⚠️ 너무 빠르게 낚싯대를 던질 수 없습니다!' });
-    }
+      tracker.intervals.push(diff);
+      if (tracker.intervals.length > 3) tracker.intervals.shift();
 
-    tracker.intervals.push(diff);
-    if (tracker.intervals.length > 4) tracker.intervals.shift();
+      if (tracker.intervals.length === 3) {
+        const avg = tracker.intervals.reduce((a, b) => a + b, 0) / tracker.intervals.length;
+        const variance = tracker.intervals.reduce((a, b) => a + Math.abs(b - avg), 0) / tracker.intervals.length;
 
-    if (tracker.intervals.length === 4) {
-      const avg = tracker.intervals.reduce((a, b) => a + b, 0) / tracker.intervals.length;
-      const variance = tracker.intervals.reduce((a, b) => a + Math.abs(b - avg), 0) / tracker.intervals.length;
-
-      if (variance < 10) {
-        tracker.macroStrike++;
+        if (variance < 15) {
+          tracker.macroStrike++;
+        }
       }
     }
+
+    tracker.lastTime = now;
 
     if (tracker.macroStrike >= 3) {
       const u = await getUserByUsername(currentUser);
@@ -268,8 +273,8 @@ io.on('connection', (socket) => {
         u.passwordhash = '밴먹은계정';
         await saveUser(u);
       }
-      socket.emit('notify', { success: false, msg: '🚨 매크로 감지 3회 누적로 계정이 정지되었습니다!' });
-      setTimeout(() => socket.disconnect(), 1000);
+      socket.emit('notify', { success: false, msg: '🚨 매크로 프로그램 사용이 3회 감지되어 계정이 영구 정지되었습니다!' });
+      setTimeout(() => socket.disconnect(), 500);
       return;
     }
 
@@ -417,4 +422,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[SERVER] 회원가입 디버깅 버전 실행됨 (포트: ${PORT})`));
+server.listen(PORT, () => console.log(`[SERVER] 회원가입 오류 완전 해결 및 안티치트 가동 (포트: ${PORT})`));
