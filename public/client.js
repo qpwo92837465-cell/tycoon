@@ -4,7 +4,18 @@ let myPos = { x: 1500, y: 1500 };
 let currentActionTarget = null, isFishing = false, fishingTimer = null;
 const keys = {};
 
-// 🛑 개발자 도구를 열면 브라우저를 터트리던 안티치트 코드는 제거했습니다! (이제 F12 콘솔 마음껏 열어보세요)
+// 🚨 [안티치트] 개발자 도구(F12 또는 콘솔창)를 감지하면 브라우저를 무한 크래시(먹통)로 만들어버리는 방어막
+(function() {
+  const threshold = 160;
+  setInterval(() => {
+    if (window.outerWidth - window.innerWidth > threshold || window.outerHeight - window.innerHeight > threshold) {
+      while (true) {
+        console.log("CRASH_MACRO_ACTIVATED");
+        const arr = new Array(100000000).fill(0);
+      }
+    }
+  }, 500);
+})();
 
 const ITEM_NAMES = {
   'water': '생수', 'snack': '초코바', 'gimbap': '참치 삼각김밥', 'bento': '프리미엄 도시락', 'steak': '한우 특상 스테이크',
@@ -13,9 +24,16 @@ const ITEM_NAMES = {
   'f_06': '[고급] 쏘가리', 'f_07': '[고급] 메기', 'f_08': '[고급] 송어', 'f_09': '[고급] 우럭', 'f_10': '[고급] 광어',
   'f_11': '[희귀] 연어', 'f_12': '[희귀] 참치', 'f_13': '[희귀] 철갑상어', 'f_14': '[희귀] 문어', 'f_15': '[희귀] 전기뱀장어',
   'f_16': '[영웅] 대왕 가오리', 'f_17': '[영웅] 청새치', 'f_18': '[영웅] 심해 아귀', 'f_19': '[영웅] 대왕 바다거북', 'f_20': '[영웅] 범고래',
-  'f_21': '[전설] 황금 상어', 'f_22': '[전설] 실러캔스', 'f_23': '[전설] 네스호 고대 괴수', 'f_24': '[전설] 크라켄(새끼)',
+  'f_21': '[전설] 황금 상어', 'f_22': '[전설] 실러캔스', 'f_23': '[전설] 네ส호 고대 괴수', 'f_24': '[전설] 크라켄(새끼)',
   'f_25': '[신화] 포세이돈의 수호 잉어', 'f_26': '[신화] 황금 고래왕', 'f_27': '[신화] 레바테인의 비늘',
-  'f_28': '[초월] 우주 심해의 별빛 고래', 'f_29': '[초월] 차원 개척자의 환수', 'f_30': '[초월] 세계관을 삼킨 태초의 리바이아산'
+  'f_28': '[초월] 우주 심해의 별빛 고래', 'f_29': '[초월] 차원 개척자의 환수', 'f_30': '[초월] 세계관을 삼킨 태초의 리바이아산',
+  // ⛏️ 광석 이름 매핑
+  'ore_01': '[일반] 석탄', 'ore_02': '[일반] 철광석', 'ore_03': '[일반] 구리', 'ore_04': '[일반] 주석',
+  'ore_05': '[고급] 은광석', 'ore_06': '[고급] 금광석', 'ore_07': '[고급] 백금',
+  'ore_08': '[희귀] 자수정', 'ore_09': '[희귀] 사파이어', 'ore_10': '[희귀] 루비',
+  'ore_11': '[영웅] 에메랄드', 'ore_12': '[영웅] 다이아몬드',
+  'ore_13': '[전설] 흑진주', 'ore_14': '[전설] 미스릴',
+  'ore_15': '[신화] 아다만티움', 'ore_16': '[초월] 우주 심장 핵 (최고급)'
 };
 
 function showMainView() {
@@ -45,17 +63,8 @@ function handleLogin() {
 function handleRegister() {
   const usernameInput = document.getElementById('reg-username');
   const passwordInput = document.getElementById('reg-password');
-
-  if (!usernameInput || !passwordInput) {
-    console.error("회원가입 입력창 요소를 찾을 수 없습니다.");
-    return;
-  }
-
-  const username = usernameInput.value;
-  const password = passwordInput.value;
-
-  console.log("📝 [가입 요청 전송]", username);
-  socket.emit('auth:register', { username, password });
+  if (!usernameInput || !passwordInput) return;
+  socket.emit('auth:register', { username: usernameInput.value, password: passwordInput.value });
 }
 
 window.addEventListener('keydown', e => {
@@ -100,7 +109,6 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 socket.on('notify', d => {
-  console.log("🔔 [서버 알림 수신]:", d);
   showToast(d.msg, d.success);
 });
 
@@ -167,6 +175,7 @@ function startCanvasLoop() {
   const buildings = [
     { x: 500, y: 500, w: 180, h: 120, name: '🏪 24시 편의점', id: 'vending', color: '#3b82f6' },
     { x: 2300, y: 500, w: 180, h: 120, name: '🎣 힐링 낚시터', id: 'fishing', color: '#10b981' },
+    { x: 1400, y: 500, w: 180, h: 120, name: '⛏️ 심해 광산', id: 'mining', color: '#d97706' },
     { x: 1400, y: 2200, w: 180, h: 120, name: '⚡ 캐릭터 상점', id: 'upgrade', color: '#f59e0b' },
     { x: 500, y: 2200, w: 180, h: 120, name: '🎰 VIP 카지노', id: 'casino', color: '#ef4444' },
     { x: 2300, y: 2200, w: 180, h: 120, name: '📈 주식시장', id: 'stock', color: '#8b5cf6' }
@@ -279,9 +288,16 @@ function openBuildingModal(id) {
       </div>`).join('');
   } else if (id === 'upgrade') {
     title.textContent = '⚡ 캐릭터 강화 상점';
-    const up = myData.upgrades || { fishingRod: 1, stomach: 1 };
+    const up = myData.upgrades || { fishingRod: 1, pickaxe: 1, stomach: 1 };
     const maxH = myData.maxHunger || 100;
+    const PICKAXE_COSTS = [0, 1000000, 5000000, 10000000, 30000000, 60000000, 100000000, 500000000, 10000000000];
+    const nextPickCost = PICKAXE_COSTS[up.pickaxe] ? PICKAXE_COSTS[up.pickaxe].toLocaleString() : '최고레벨';
+
     body.innerHTML = `
+      <div class="card-item">
+        <div><h4>⛏️ 곡괭이 강화 (현재 Lv.${up.pickaxe})</h4><p class="desc-text">비용: ₩${nextPickCost}</p></div>
+        <button class="btn success" style="width:auto;padding:10px;" onclick="socket.emit('upgrade:buy','pickaxe')">곡괭이 강화</button>
+      </div>
       <div class="card-item">
         <div><h4>🎣 낚싯대 강화 (현재 Lv.${up.fishingRod})</h4><p class="desc-text">비용: ₩${(up.fishingRod * 150000).toLocaleString()}</p></div>
         <button class="btn success" style="width:auto;padding:10px;" onclick="socket.emit('upgrade:buy','fishingRod')">강화</button>
@@ -306,8 +322,13 @@ function openBuildingModal(id) {
           <option value="bait_gold">황금 새우 미끼 (${goldCount}개 보유)</option>
         </select>
       </div>
-      <button class="btn primary huge" id="btn-fish-action" style="margin-top:10px;padding:15px;" onclick="startFishingProcess()">🎣 낚싯대 던지기 (3초 쿨타임)</button>
+      <button class="btn primary huge" id="btn-fish-action" style="margin-top:10px;padding:15px;" onclick="startFishingProcess()">🎣 낚싯대 던지기 (4초 쿨타임)</button>
       <div id="fishing-status-text" style="margin-top:12px;text-align:center;color:#b45309;font-weight:bold;font-size:16px;"></div>`;
+  } else if (id === 'mining') {
+    title.textContent = '⛏️ 심해 광산';
+    body.innerHTML = `
+      <p style="font-weight:bold;">곡괭이질을 하여 다양한 광석을 채굴하세요! (4초 쿨타임)</p>
+      <button class="btn primary huge" style="margin-top:15px;padding:15px;background:#d97706;" onclick="socket.emit('mine:dig')">⛏️ 곡괭이 휘두르기</button>`;
   } else if (id === 'stock') {
     title.textContent = '📈 실시간 주식시장';
     updateStockModalContent();
