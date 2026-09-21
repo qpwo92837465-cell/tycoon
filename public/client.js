@@ -4,7 +4,7 @@ let myPos = { x: 1500, y: 1500 };
 let currentActionTarget = null, isFishing = false, fishingTimer = null;
 const keys = {};
 
-// 🚨 [안티치트] 개발자 도구(F12 또는 콘솔창)를 감지하면 브라우저를 무한 크래시(먹통)로 만들어버리는 방어막
+// 🚨 [안티치트] 개발자 도구 감지 시 브라우저 크래시 방어막
 (function() {
   const threshold = 160;
   setInterval(() => {
@@ -108,9 +108,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
-socket.on('notify', d => {
-  showToast(d.msg, d.success);
-});
+socket.on('notify', d => { showToast(d.msg, d.success); });
 
 socket.on('auth:success', ({ username, userData, jobs, vending, stocks }) => {
   document.getElementById('auth-modal').classList.add('hidden');
@@ -313,7 +311,7 @@ function openBuildingModal(id) {
     const goldCount = inv['bait_gold'] || 0;
 
     body.innerHTML = `
-      <p style="font-weight:bold;">사용할 미끼를 선택하고 낚싯대를 던지세요!</p>
+      <p style="font-weight:bold;">사용할 미끼를 선택하고 낚싯대를 던지세요! (포만감 10 소모)</p>
       <div class="input-group" style="margin-top:10px;">
         <label style="font-size:14px; font-weight:bold;">미끼 선택:</label>
         <select id="fishing-bait-select">
@@ -322,13 +320,14 @@ function openBuildingModal(id) {
           <option value="bait_gold">황금 새우 미끼 (${goldCount}개 보유)</option>
         </select>
       </div>
-      <button class="btn primary huge" id="btn-fish-action" style="margin-top:10px;padding:15px;" onclick="startFishingProcess()">🎣 낚싯대 던지기 (4초 쿨타임)</button>
+      <button class="btn primary huge" id="btn-fish-action" style="margin-top:10px;padding:15px;" onclick="startFishingProcess()">🎣 낚싯대 던지기</button>
       <div id="fishing-status-text" style="margin-top:12px;text-align:center;color:#b45309;font-weight:bold;font-size:16px;"></div>`;
   } else if (id === 'mining') {
     title.textContent = '⛏️ 심해 광산';
     body.innerHTML = `
-      <p style="font-weight:bold;">곡괭이질을 하여 다양한 광석을 채굴하세요! (4초 쿨타임)</p>
-      <button class="btn primary huge" style="margin-top:15px;padding:15px;background:#d97706;" onclick="socket.emit('mine:dig')">⛏️ 곡괭이 휘두르기</button>`;
+      <p style="font-weight:bold;">곡괭이질을 하여 다양한 광석을 채굴하세요! (포만감 10 소모)</p>
+      <button class="btn primary huge" id="btn-mine-action" style="margin-top:15px;padding:15px;background:#d97706;" onclick="startMiningProcess()">⛏️ 곡괭이 휘두르기</button>
+      <div id="mining-status-text" style="margin-top:12px;text-align:center;color:#b45309;font-weight:bold;font-size:16px;"></div>`;
   } else if (id === 'stock') {
     title.textContent = '📈 실시간 주식시장';
     updateStockModalContent();
@@ -344,6 +343,74 @@ function openBuildingModal(id) {
       <div id="casino-game-view"></div>`;
     switchCasinoGame('blackjack');
   }
+}
+
+// 🎣 낚시 버튼 쿨타임 및 카운트다운 타이머 처리
+function startFishingProcess() {
+  if (isFishing) return;
+  const baitSelect = document.getElementById('fishing-bait-select');
+  const selectedBait = baitSelect ? baitSelect.value : 'none';
+
+  const btn = document.getElementById('btn-fish-action');
+  const status = document.getElementById('fishing-status-text');
+  if (!btn) return;
+
+  isFishing = true;
+  btn.disabled = true;
+  btn.style.background = '#94a3b8'; // 회색 비활성화
+
+  let timeLeft = 4;
+  btn.textContent = `쿨타임 중... (${timeLeft}초)`;
+  
+  const timerInterval = setInterval(() => {
+    timeLeft--;
+    if (timeLeft > 0) {
+      btn.textContent = `쿨타임 중... (${timeLeft}초)`;
+    } else {
+      clearInterval(timerInterval);
+      btn.textContent = '🎣 낚싯대 던지기';
+      btn.disabled = false;
+      btn.style.background = '#4f46e5';
+      isFishing = false;
+    }
+  }, 1000);
+
+  status.textContent = '⏳ 낚싯대를 던졌습니다... 찌를 주시하세요!';
+  setTimeout(() => {
+    socket.emit('fish:catch', { selectedBait });
+    status.textContent = '🎉 낚시 완료! 가방을 확인하세요.';
+  }, 3000);
+}
+
+// ⛏️ 광산 채광 버튼 쿨타임 및 카운트다운 타이머 처리
+function startMiningProcess() {
+  const btn = document.getElementById('btn-mine-action');
+  const status = document.getElementById('mining-status-text');
+  if (!btn || btn.disabled) return;
+
+  btn.disabled = true;
+  btn.style.background = '#94a3b8'; // 회색 비활성화
+
+  let timeLeft = 4;
+  btn.textContent = `쿨타임 중... (${timeLeft}초)`;
+
+  const timerInterval = setInterval(() => {
+    timeLeft--;
+    if (timeLeft > 0) {
+      btn.textContent = `쿨타임 중... (${timeLeft}초)`;
+    } else {
+      clearInterval(timerInterval);
+      btn.textContent = '⛏️ 곡괭이 휘두르기';
+      btn.disabled = false;
+      btn.style.background = '#d97706'; // 원래 주황색 복구
+    }
+  }, 1000);
+
+  if (status) status.textContent = '⛏️ 열심히 곡괭이질 중...';
+  socket.emit('mine:dig');
+  setTimeout(() => {
+    if (status) status.textContent = '🎉 채광 완료! 가방을 확인하세요.';
+  }, 1000);
 }
 
 function updateStockModalContent() {
@@ -466,29 +533,4 @@ function handleLogout() {
   localStorage.removeItem('tycoon_user');
   localStorage.removeItem('tycoon_pass');
   location.reload();
-}
-
-function startFishingProcess() {
-  if (isFishing) return;
-  const baitSelect = document.getElementById('fishing-bait-select');
-  const selectedBait = baitSelect ? baitSelect.value : 'none';
-
-  const btn = document.getElementById('btn-fish-action');
-  const status = document.getElementById('fishing-status-text');
-
-  isFishing = true;
-  btn.disabled = true;
-  btn.style.background = '#cbd5e1';
-
-  status.textContent = '⏳ 낚싯대를 던졌습니다... (3초 대기)';
-  setTimeout(() => {
-    status.textContent = '🌊 찌가 물 위에 둥둥 떠 있습니다... 입질 대기 중 (5초)';
-    fishingTimer = setTimeout(() => {
-      socket.emit('fish:catch', { selectedBait });
-      status.textContent = '🎉 물고기가 걸렸습니다! 가방을 확인하세요.';
-      isFishing = false;
-      btn.disabled = false;
-      btn.style.background = '#4f46e5';
-    }, 5000);
-  }, 3000);
 }
